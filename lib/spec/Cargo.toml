@@ -1,0 +1,17 @@
+[package]
+name = "specifications"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bas Kloosterman", "Tim Müller"]
+repository.workspace = true
+license.workspace = true
+description = "Provides public interfaces for things to be compatible with the policy store library."
+
+
+[dependencies]
+serde = "1.0.204"
+
+
+[features]
+default = []
+

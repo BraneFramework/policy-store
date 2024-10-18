@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "lib/spec"
+]
+
+
+[package]
+name = "policy-store"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bas Kloosterman", "Daniel Voogsgerd", "Tim Müller"]
+repository.workspace = true
+license.workspace = true
+description = "Stores policy for use with a policy reasoner."
+
+
+[workspace.package]
+repository = "https://github.com/epi-project/policy-store"
+license = "Apache-2.0"
+
+
+[dependencies]
+specifications = { path = "lib/spec" }
+
+
+[features]
+default = []
