@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
+    # Databases
+    "lib/databases/sqlite",
+
+    # Library stuff
     "lib/spec"
 ]
 
@@ -21,8 +25,12 @@ license = "Apache-2.0"
 
 
 [dependencies]
+sqlite-database = { path = "lib/databases/sqlite", optional = true }
 specifications = { path = "lib/spec" }
 
 
 [features]
 default = []
+
+databases = ["sqlite-database"]
+sqlite-database = ["dep:sqlite-database"]

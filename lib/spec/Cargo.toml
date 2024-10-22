@@ -9,6 +9,7 @@ description = "Provides public interfaces for things to be compatible with the p
 
 
 [dependencies]
+chrono = "0.4.38"
 serde = "1.0.204"
 
 
