@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    23 Oct 2024, 10:22:31
+//    23 Oct 2024, 11:22:12
 //  Auto updated?
 //    Yes
 //
@@ -212,7 +212,7 @@ impl<C> SQLiteDatabase<C> {
     /// # Errors
     /// This function may fail if we failed to setup a connection pool to the given path, or if we
     /// failed to apply the migrations in case it's a new file.
-    pub async fn new(path: impl Into<PathBuf>, migrations_dir: impl AsRef<Path>) -> Result<Self, DatabaseError> {
+    pub async fn new_async(path: impl Into<PathBuf>, migrations_dir: impl AsRef<Path>) -> Result<Self, DatabaseError> {
         let path: PathBuf = path.into();
         let migrations_dir: &Path = migrations_dir.as_ref();
         debug!("Creating new SQLite connector to {:?}...", path.display());

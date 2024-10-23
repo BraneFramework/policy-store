@@ -1,0 +1,26 @@
+[package]
+name = "jwk-auth"
+version = "0.2.0"
+edition = "2021"
+authors = ["Bas Kloosterman", "Tim Müller"]
+repository.workspace = true
+license.workspace = true
+description = "Implements a JSON Web Token (JWT) / JSON Web Key (JWK)-based scheme for the `AuthResolver`."
+
+
+[dependencies]
+base64ct = "1.6.0"
+http = "1.1.0"
+jsonwebtoken = "9.3.0"
+serde_json = "1.0.132"
+thiserror = "1.0.61"
+tracing = "0.1.40"
+
+specifications = { path = "../../spec" }
+
+
+[features]
+default = []
+
+resolvers = ["kid"]
+kid = []

@@ -4,7 +4,7 @@
 //  Created:
 //    18 Oct 2024, 17:50:16
 //  Last edited:
-//    22 Oct 2024, 14:33:32
+//    23 Oct 2024, 14:57:25
 //  Auto updated?
 //    Yes
 //
@@ -13,6 +13,7 @@
 //
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 
 /***** LIBRARY *****/
@@ -20,7 +21,7 @@ use chrono::{DateTime, Utc};
 ///
 /// Note that it can be generally assumed that other parts of the reasoner fuss about how to
 /// make sure this represents an actual, authenticated user.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct User {
     /// Some machine-relevant identifier of the creator.
     pub id:   String,
@@ -29,7 +30,7 @@ pub struct User {
 }
 
 /// Metadata that is given by the user as an attachment to a policy.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AttachedMetadata {
     /// Some name for the policy to recognise it later. Doesn't have to be unique.
     pub name: String,
@@ -41,7 +42,7 @@ pub struct AttachedMetadata {
 ///
 /// Includes whatever is [attached](AttachedMetadata), but also things inferred when pushing
 /// versions (e.g., created time).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Metadata {
     /// Whatever the user attached at runtime.
     pub attached: AttachedMetadata,

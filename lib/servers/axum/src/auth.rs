@@ -1,0 +1,97 @@
+//  AUTH.rs
+//    by Lut99
+//
+//  Created:
+//    23 Oct 2024, 11:58:43
+//  Last edited:
+//    23 Oct 2024, 16:29:52
+//  Auto updated?
+//    Yes
+//
+//  Description:
+//!   Implements the server's authorization middleware.
+//
+
+use std::future::Future;
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use axum::body::Body;
+use axum::extract::{ConnectInfo, Request, State};
+use axum::http::StatusCode;
+use axum::middleware::Next;
+use axum::response::Response;
+use axum_macros::debug_handler;
+use error_trace::ErrorTrace as _;
+use specifications::authresolver::ClientError;
+use specifications::AuthResolver;
+use thiserror::Error;
+use tracing::{error, span, Level};
+
+use crate::server::AxumServer;
+
+
+/***** ERRORS *****/
+/// Simple wrapper for erroring and freezing the result.
+#[derive(Debug, Error)]
+enum Error<E> {
+    #[error("Failed to authorize incoming request")]
+    AuthorizeFailed {
+        #[source]
+        err: E,
+    },
+}
+impl<E: 'static + ClientError> ClientError for Error<E> {
+    #[inline]
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::AuthorizeFailed { err } => err.status_code(),
+        }
+    }
+}
+
+
+
+
+
+/***** LIBRARY *****/
+impl<A, D> AxumServer<A, D>
+where
+    A: AuthResolver,
+{
+    pub(crate) async fn check(
+        State(context): State<Arc<Self>>,
+        ConnectInfo(client): ConnectInfo<SocketAddr>,
+        mut request: Request,
+        next: Next,
+    ) -> Response {
+        // let _span = span!(Level::INFO, "AxumServer::check", client = client.to_string());
+        let _span = span!(Level::INFO, "AxumServer::check");
+
+        // Do the auth thingy
+        let user: A::Context = match context.auth.authorize(request.headers()).await {
+            Ok(Ok(user)) => user,
+            Ok(Err(err)) => {
+                // let err = Error::AuthorizeFailed { err };
+                // error!("{}", err.trace());
+                // let mut res =
+                //     Response::new(Body::from(serde_json::to_string(&err.freeze()).unwrap_or_else(|err| panic!("Failed to serialize Trace: {err}"))));
+                // *res.status_mut() = err.status_code();
+                // return res;
+                todo!()
+            },
+            Err(err) => {
+                // let err = Error::AuthorizeFailed { err };
+                // // error!("{}", err.trace());
+                // let mut res = Response::new(Body::from(err.to_string()));
+                // *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                // return res;
+                todo!()
+            },
+        };
+
+        // // If we found a context, then inject it in the request as an extension; then continue
+        // request.extensions_mut().insert(user);
+        next.run(request).await
+    }
+}

@@ -1,0 +1,30 @@
+[package]
+name = "axum-api"
+version = "0.2.0"
+edition = "2021"
+authors = ["Bas Kloosterman", "Tim Müller"]
+repository.workspace = true
+license.workspace = true
+description = "Implements an out-of-the-box, standardized HTTP API for the policy store using `axum`."
+
+
+[dependencies]
+axum = "0.7.7"
+axum-macros = "0.4.2"
+# chrono = "0.4.38"
+# diesel = { version = "2.2.4", features = ["chrono", "r2d2", "sqlite"] }
+# diesel_migrations = "2.2.0"
+never-say-never = "6.6.666"
+# serde = "1.0.213"
+serde_json = "1.0.132"
+thiserror = "1.0.61"
+# tokio = { version = "1.41.0", default-features = false, features = ["fs", "rt", "rt-multi-thread"] }
+tracing = "0.1.40"
+
+error-trace = { git = "https://github.com/Lut99/error-trace-rs", tag = "v3.2.0", features = ["serde"] }
+
+specifications = { path = "../../spec" }
+
+
+[features]
+default = []

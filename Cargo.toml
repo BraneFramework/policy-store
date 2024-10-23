@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
+    # Servers
+    "lib/servers/axum",
+
+    # Auth
+    "lib/auth/jwk",
+
     # Databases
     "lib/databases/sqlite",
 
@@ -25,12 +31,22 @@ license = "Apache-2.0"
 
 
 [dependencies]
-sqlite-database = { path = "lib/databases/sqlite", optional = true }
+axum-api = { path = "lib/servers/axum", optional = true }
+jwk-auth = { path = "lib/auth/jwk", optional = true }
 specifications = { path = "lib/spec" }
+sqlite-database = { path = "lib/databases/sqlite", optional = true }
 
 
 [features]
 default = []
+
+all = ["servers", "auths", "databases"]
+
+servers = ["axum-api"]
+axum-api = ["dep:axum-api"]
+
+auths = ["jwk-auth"]
+jwk-auth = ["dep:jwk-auth"]
 
 databases = ["sqlite-database"]
 sqlite-database = ["dep:sqlite-database"]
