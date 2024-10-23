@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    22 Oct 2024, 16:24:19
+//    23 Oct 2024, 10:22:31
 //  Auto updated?
 //    Yes
 //
@@ -12,21 +12,24 @@
 //!   Implements the actual [`DatabaseConnector`].
 //
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{NaiveDateTime, Utc};
 use diesel::connection::LoadConnection;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::sqlite::Sqlite;
-use diesel::{ExpressionMethods as _, QueryDsl as _, RunQueryDsl as _, SelectableHelper as _, SqliteConnection};
+use diesel::{Connection as _, ExpressionMethods as _, QueryDsl as _, RunQueryDsl as _, SelectableHelper as _, SqliteConnection};
+use diesel_migrations::{FileBasedMigrations, MigrationHarness as _};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use specifications::databaseconn::DatabaseConnection;
 use specifications::metadata::{AttachedMetadata, Metadata, User};
 use specifications::DatabaseConnector;
 use thiserror::Error;
+use tokio::fs;
 use tracing::{debug, info, span, Level};
 
 use crate::models::{SqliteActiveVersion, SqlitePolicy};
@@ -43,6 +46,50 @@ pub enum DatabaseError {
         #[source]
         err:  diesel::r2d2::PoolError,
     },
+    /// Failed to connect to the database when creating it.
+    #[error("Failed to first-time connect to backend database {:?}", path.display())]
+    ConnectDatabase {
+        path: PathBuf,
+        #[source]
+        err:  diesel::ConnectionError,
+    },
+    /// Failed to create the database.
+    #[error("Failed to create database file {:?}", path.display())]
+    DatabaseCreate {
+        path: PathBuf,
+        #[source]
+        err:  std::io::Error,
+    },
+    /// Failed to create the parent directory of the database.
+    #[error("Failed to create database parent directory {:?}", path.display())]
+    DatabaseDirCreate {
+        path: PathBuf,
+        #[source]
+        err:  std::io::Error,
+    },
+    /// Failed to apply the migrations in a particular folder to a particular database.
+    #[error("Failed to apply migrations in folder {:?} to new database {:?}", migrations_dir.display(), path.display())]
+    MigrationsApply {
+        path: PathBuf,
+        migrations_dir: PathBuf,
+        #[source]
+        err: Box<dyn 'static + std::error::Error>,
+    },
+    /// Failed to find the migrations for a database in the given folder.
+    #[error("Failed to find migrations for new database {:?} in migrations folder {:?}", path.display(), migrations_dir.display())]
+    MigrationsFind {
+        path: PathBuf,
+        migrations_dir: PathBuf,
+        #[source]
+        err: diesel_migrations::MigrationError,
+    },
+    /// Failed to create a new connection pool.
+    #[error("Failed to create a connection pool to backend database {:?}", path.display())]
+    PoolCreate {
+        path: PathBuf,
+        #[source]
+        err:  diesel::r2d2::PoolError,
+    },
 }
 
 /// Defines errors originating from the [`SQLiteConnection`].
@@ -54,6 +101,21 @@ pub enum ConnectionError {
         path: PathBuf,
         #[source]
         err:  diesel::result::Error,
+    },
+    /// Failed to deserialize the given content from JSON.
+    #[error("Failed to deserialize the given content of policy {name:?} ({version}) from JSON")]
+    ContentDeserialize {
+        name:    String,
+        version: u64,
+        #[source]
+        err:     serde_json::Error,
+    },
+    /// Failed to serialize the given content as JSON.
+    #[error("Failed to serialize the content of policy {name:?} as JSON")]
+    ContentSerialize {
+        name: String,
+        #[source]
+        err:  serde_json::Error,
     },
     /// Failed to deactivate an active version.
     #[error("Failed to deactivate active policy version {version} in backend database {:?}", path.display())]
@@ -85,11 +147,12 @@ pub enum ConnectionError {
         #[source]
         err:     diesel::result::Error,
     },
-    /// Failed to serialize the given content as JSON.
-    #[error("Failed to serialize the given content as JSON")]
-    SerializeContent {
+    /// Failed to get the list of versions.
+    #[error("Failed to get the list of versions from backend database {:?}", path.display())]
+    GetVersions {
+        path: PathBuf,
         #[source]
-        err: serde_json::Error,
+        err:  diesel::result::Error,
     },
     /// Failed to set the currently active policy.
     #[error("Failed to set version {version} as the active policy in backend database {:?}", path.display())]
@@ -135,6 +198,68 @@ pub struct SQLiteDatabase<C> {
     pool:     Pool<ConnectionManager<SqliteConnection>>,
     /// Remembers the type of content used.
     _content: PhantomData<C>,
+}
+impl<C> SQLiteDatabase<C> {
+    /// Constructor for the SQLiteDatabase.
+    ///
+    /// # Arguments
+    /// - `path`: The path of the database to connect to.
+    /// - `migrations_dir`: A directory with migrations to apply when creating a new database.
+    ///
+    /// # Returns
+    /// A new SQLiteDatabase struct that can be used to connect to the backend file.
+    ///
+    /// # Errors
+    /// This function may fail if we failed to setup a connection pool to the given path, or if we
+    /// failed to apply the migrations in case it's a new file.
+    pub async fn new(path: impl Into<PathBuf>, migrations_dir: impl AsRef<Path>) -> Result<Self, DatabaseError> {
+        let path: PathBuf = path.into();
+        let migrations_dir: &Path = migrations_dir.as_ref();
+        debug!("Creating new SQLite connector to {:?}...", path.display());
+
+        // Check if we need to create it first
+        if !path.exists() {
+            info!("Database {:?} doesn't exist; creating...", path.display());
+
+            // Touch the database file
+            if let Some(dir) = path.parent() {
+                if !dir.exists() {
+                    if let Err(err) = fs::create_dir(&dir).await {
+                        return Err(DatabaseError::DatabaseDirCreate { path: dir.into(), err });
+                    }
+                }
+            }
+            if let Err(err) = fs::File::create(&path).await {
+                return Err(DatabaseError::DatabaseCreate { path, err });
+            }
+
+            // Get the migrations defined
+            let migrations: FileBasedMigrations = match FileBasedMigrations::find_migrations_directory_in_path(migrations_dir) {
+                Ok(migrations) => migrations,
+                Err(err) => return Err(DatabaseError::MigrationsFind { path, migrations_dir: migrations_dir.into(), err }),
+            };
+
+            // Apply them by connecting to the database
+            let mut conn: SqliteConnection = match SqliteConnection::establish(&format!("file://{}", path.display())) {
+                Ok(conn) => conn,
+                Err(err) => return Err(DatabaseError::ConnectDatabase { path, err }),
+            };
+            if let Err(err) = conn.run_pending_migrations(migrations) {
+                return Err(DatabaseError::MigrationsApply { path, migrations_dir: migrations_dir.into(), err });
+            }
+        } else {
+            debug!("Database {:?} already exists", path.display());
+        }
+
+        // Create the pool
+        let pool: Pool<_> = match Pool::new(ConnectionManager::new(format!("file://{}", path.display()))) {
+            Ok(pool) => pool,
+            Err(err) => return Err(DatabaseError::PoolCreate { path, err }),
+        };
+
+        // OK, now create self
+        Ok(Self { path, pool, _content: PhantomData })
+    }
 }
 impl<C: DeserializeOwned + Serialize> DatabaseConnector for SQLiteDatabase<C> {
     type Connection<'s> = SQLiteConnection<'s, C> where Self: 's;
@@ -204,54 +329,6 @@ impl<'a, C> SQLiteConnection<'a, C> {
             Err(err) => return Err(ConnectionError::GetActiveVersion { path: path.into(), err }),
         }
     }
-
-    /// Helper function for doing the non-async version metadata retrieval.
-    ///
-    /// # Arguments
-    /// - `path`: The path where the backend SQLite database lives. Only given for debugging purposes.
-    /// - `conn`: Some [`LoadConnection`] that we use to talk to the file.
-    /// - `version`: The version to (hopefully) retrieve.
-    ///
-    /// # Returns
-    /// The [`Metadata`] of the given `version`.
-    ///
-    /// # Errors
-    /// This function errors if we failed to get the active version or if we didn't find the version.
-    fn _get_version_metadata<C2>(path: &Path, conn: &mut C2, version: u64) -> Result<Metadata, ConnectionError>
-    where
-        C2: LoadConnection<Backend = Sqlite>,
-    {
-        use crate::schema::policies::dsl::policies;
-
-        debug!("Retrieving metadata for version {version}...");
-        match policies
-            .limit(1)
-            .filter(crate::schema::policies::dsl::version.eq(version as i64))
-            .order_by(crate::schema::policies::dsl::created_at.desc())
-            .select(SqlitePolicy::as_select())
-            .load::<SqlitePolicy>(conn)
-        {
-            Ok(mut r) => {
-                // Extract the version itself
-                if r.len() < 1 {
-                    return Err(ConnectionError::VersionNotFound { path: path.into(), version });
-                }
-                let item: SqlitePolicy = r.remove(0);
-
-                // Done, return the thing
-                Ok(Metadata {
-                    attached: AttachedMetadata { name: item.name, description: item.description },
-                    created:  item.created_at.and_utc(),
-                    creator:  User { id: item.creator, name: "John Smith".into() },
-                    version:  item.version as u64,
-                })
-            },
-            Err(err) => Err(match err {
-                diesel::result::Error::NotFound => ConnectionError::VersionNotFound { path: path.into(), version },
-                err => ConnectionError::GetVersion { path: path.into(), version, err },
-            }),
-        }
-    }
 }
 impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnection<'a, C> {
     type Content = C;
@@ -286,7 +363,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
                     // Construct the policy itself
                     let content = match serde_json::to_string(&content) {
                         Ok(content) => content,
-                        Err(err) => return Err(ConnectionError::SerializeContent { err }),
+                        Err(err) => return Err(ConnectionError::ContentSerialize { name: metadata.name, err }),
                     };
                     let model = SqlitePolicy {
                         name: metadata.name,
@@ -320,7 +397,6 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
                     let _span = span;
 
                     // Get the information about what to activate
-                    let policy = Self::_get_version_metadata(&self.path, conn, version)?;
                     let av = Self::_get_active_version(&self.path, conn)?;
 
                     // They may already be the same, ez
@@ -375,32 +451,30 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
 
     // Immutable
     fn get_versions(&mut self) -> impl Future<Output = Result<HashMap<u64, Metadata>, Self::Error>> {
-        use crate::schema::policies::dsl::{created_at, creator, policies, reasoner_connector_context, version, version_description};
-        let mut conn = self.pool.get().unwrap();
+        use crate::schema::policies::dsl as policy;
 
-        match policies
-            .order_by(crate::schema::policies::dsl::created_at.desc())
-            .select((version, version_description, creator, created_at, reasoner_connector_context))
-            .load::<(i64, String, String, i64, String)>(&mut conn)
-        {
-            Ok(r) => {
-                let items: Vec<PolicyVersion> = r
+        async move {
+            let _span = span!(Level::INFO, "SQLiteConnection::get_versions");
+
+            debug!("Retrieving all policy versions...");
+            match policy::policies
+                .order_by(crate::schema::policies::dsl::created_at.desc())
+                .select((policy::description, policy::name, policy::version, policy::creator, policy::created_at))
+                .load::<(String, String, i64, String, NaiveDateTime)>(&mut self.conn)
+            {
+                Ok(r) => Ok(r
                     .into_iter()
-                    .map(|x| PolicyVersion {
-                        version: Some(x.0),
-                        version_description: x.1,
-                        creator: Some(x.2),
-                        created_at: DateTime::from_timestamp_micros(x.3).unwrap().into(),
-                        reasoner_connector_context: x.4,
+                    .map(|(description, name, version, creator, created_at)| {
+                        (version as u64, Metadata {
+                            attached: AttachedMetadata { name, description },
+                            version:  version as u64,
+                            creator:  User { id: creator, name: "John Smith".into() },
+                            created:  created_at.and_utc(),
+                        })
                     })
-                    .collect();
-
-                return Ok(items);
-            },
-            Err(err) => Err(match err {
-                Error::NotFound => PolicyDataError::NotFound,
-                _ => PolicyDataError::GeneralError(err.to_string()),
-            }),
+                    .collect()),
+                Err(err) => Err(ConnectionError::GetVersions { path: self.path.into(), err }),
+            }
         }
     }
 
@@ -413,21 +487,106 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
         }
     }
 
-    fn get_activator(&mut self) -> impl Future<Output = Result<Option<User>, Self::Error>> { todo!() }
+    fn get_activator(&mut self) -> impl Future<Output = Result<Option<User>, Self::Error>> {
+        use crate::schema::active_version::dsl::active_version;
+
+        async move {
+            let _span = span!(Level::INFO, "SQLiteConnection::get_active");
+
+            // Do a call to get the active, if any
+            debug!("Fetching active version...");
+            match active_version
+                .limit(1)
+                .order_by(crate::schema::active_version::dsl::activated_on.desc())
+                .select(SqliteActiveVersion::as_select())
+                .load(&mut self.conn)
+            {
+                Ok(mut r) => match r.pop() {
+                    Some(av) => {
+                        if av.deactivated_on.is_some() {
+                            Ok(None)
+                        } else {
+                            Ok(Some(User { id: av.activated_by, name: "John Smith".into() }))
+                        }
+                    },
+                    None => Ok(None),
+                },
+                Err(err) => return Err(ConnectionError::GetActiveVersion { path: self.path.into(), err }),
+            }
+        }
+    }
 
     fn get_version_metadata(&mut self, version: u64) -> impl Future<Output = Result<Metadata, Self::Error>> {
+        use crate::schema::policies::dsl as policy;
+
         async move {
             let _span = span!(Level::INFO, "SQLiteConnection::get_version_metadata", version = version);
 
-            tokio::task::block_in_place(move || Self::_get_version_metadata(&self.path, &mut self.conn, version))
+            debug!("Retrieving metadata for version {version}...");
+            match policy::policies
+                .limit(1)
+                .filter(crate::schema::policies::dsl::version.eq(version as i64))
+                .order_by(crate::schema::policies::dsl::created_at.desc())
+                .select((policy::description, policy::name, policy::version, policy::creator, policy::created_at))
+                .load::<(String, String, i64, String, NaiveDateTime)>(&mut self.conn)
+            {
+                Ok(mut r) => {
+                    // Extract the version itself
+                    if r.len() < 1 {
+                        return Err(ConnectionError::VersionNotFound { path: self.path.into(), version });
+                    }
+                    let (description, name, version, creator, created_at) = r.remove(0);
+
+                    // Done, return the thing
+                    Ok(Metadata {
+                        attached: AttachedMetadata { name, description },
+                        created:  created_at.and_utc(),
+                        creator:  User { id: creator, name: "John Smith".into() },
+                        version:  version as u64,
+                    })
+                },
+                Err(err) => Err(match err {
+                    diesel::result::Error::NotFound => ConnectionError::VersionNotFound { path: self.path.into(), version },
+                    err => ConnectionError::GetVersion { path: self.path.into(), version, err },
+                }),
+            }
         }
     }
 
     fn get_version_content(&mut self, version: u64) -> impl Future<Output = Result<Self::Content, Self::Error>> {
-        async move {
-            let _span = span!(Level::INFO, "SQLiteConnection::get_version_metadata", version = version);
+        use crate::schema::policies::dsl as policy;
 
-            tokio::task::block_in_place(move || Self::_get_version_metadata(&self.path, &mut self.conn, version))
+        async move {
+            let _span = span!(Level::INFO, "SQLiteConnection::get_version_content", version = version);
+
+            tokio::task::block_in_place(move || {
+                debug!("Retrieving content for version {version}...");
+                match policy::policies
+                    .limit(1)
+                    .filter(crate::schema::policies::dsl::version.eq(version as i64))
+                    .order_by(crate::schema::policies::dsl::created_at.desc())
+                    .select((policy::name, policy::content))
+                    .load::<(String, String)>(&mut self.conn)
+                {
+                    Ok(mut r) => {
+                        // Extract the version itself
+                        if r.len() < 1 {
+                            return Err(ConnectionError::VersionNotFound { path: self.path.into(), version });
+                        }
+                        let (name, content) = r.remove(0);
+
+                        // Deserialize the content
+                        match serde_json::from_str(&content) {
+                            Ok(content) => Ok(content),
+                            Err(err) => Err(ConnectionError::ContentDeserialize { name, version, err }),
+                        }
+                    },
+                    Err(err) => Err(match err {
+                        diesel::result::Error::NotFound => ConnectionError::VersionNotFound { path: self.path.into(), version },
+                        err => ConnectionError::GetVersion { path: self.path.into(), version, err },
+                    }),
+                }
+            })
         }
     }
 }
