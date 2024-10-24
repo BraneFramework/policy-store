@@ -10,10 +10,6 @@ description = "Implements an out-of-the-box, standardized HTTP API for the polic
 
 [dependencies]
 axum = "0.7.7"
-# axum-macros = "0.4.2"
-# chrono = "0.4.38"
-# diesel = { version = "2.2.4", features = ["chrono", "r2d2", "sqlite"] }
-# diesel_migrations = "2.2.0"
 futures = "0.3.31"
 hyper = "1.5.0"
 hyper-util = "0.1.9"
