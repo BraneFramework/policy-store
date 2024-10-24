@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    23 Oct 2024, 11:22:12
+//    24 Oct 2024, 13:05:25
 //  Auto updated?
 //    Yes
 //
@@ -261,12 +261,13 @@ impl<C> SQLiteDatabase<C> {
         Ok(Self { path, pool, _content: PhantomData })
     }
 }
-impl<C: DeserializeOwned + Serialize> DatabaseConnector for SQLiteDatabase<C> {
+impl<C: Send + Sync + DeserializeOwned + Serialize> DatabaseConnector for SQLiteDatabase<C> {
     type Connection<'s> = SQLiteConnection<'s, C> where Self: 's;
+    type Content = C;
     type Error = DatabaseError;
 
     #[inline]
-    fn connect<'s>(&'s self, user: &'s specifications::metadata::User) -> impl Future<Output = Result<Self::Connection<'s>, Self::Error>> {
+    fn connect<'s>(&'s self, user: &'s specifications::metadata::User) -> impl Send + Future<Output = Result<Self::Connection<'s>, Self::Error>> {
         async move {
             // Attempt to get a connection from the pool
             debug!("Creating new connection to SQLite database {:?}...", self.path.display());
@@ -330,13 +331,13 @@ impl<'a, C> SQLiteConnection<'a, C> {
         }
     }
 }
-impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnection<'a, C> {
+impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnection<'a, C> {
     type Content = C;
     type Error = ConnectionError;
 
 
     // Mutable
-    fn add_version(&mut self, metadata: AttachedMetadata, content: Self::Content) -> impl Future<Output = Result<u64, Self::Error>> {
+    fn add_version(&mut self, metadata: AttachedMetadata, content: Self::Content) -> impl Send + Future<Output = Result<u64, Self::Error>> {
         use crate::schema::policies::dsl::policies;
 
         async move {
@@ -384,7 +385,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
         }
     }
 
-    fn activate(&mut self, version: u64) -> impl Future<Output = Result<(), Self::Error>> {
+    fn activate(&mut self, version: u64) -> impl Send + Future<Output = Result<(), Self::Error>> {
         use crate::schema::active_version::dsl::active_version;
 
         async move {
@@ -416,7 +417,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
         }
     }
 
-    fn deactivate(&mut self) -> impl Future<Output = Result<(), Self::Error>> {
+    fn deactivate(&mut self) -> impl Send + Future<Output = Result<(), Self::Error>> {
         use crate::schema::active_version::dsl::{active_version, deactivated_by, deactivated_on, version};
 
         async move {
@@ -450,7 +451,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
 
 
     // Immutable
-    fn get_versions(&mut self) -> impl Future<Output = Result<HashMap<u64, Metadata>, Self::Error>> {
+    fn get_versions(&mut self) -> impl Send + Future<Output = Result<HashMap<u64, Metadata>, Self::Error>> {
         use crate::schema::policies::dsl as policy;
 
         async move {
@@ -478,7 +479,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
         }
     }
 
-    fn get_active_version(&mut self) -> impl Future<Output = Result<Option<u64>, Self::Error>> {
+    fn get_active_version(&mut self) -> impl Send + Future<Output = Result<Option<u64>, Self::Error>> {
         async move {
             let _span = span!(Level::INFO, "SQLiteConnection::get_active");
 
@@ -487,7 +488,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
         }
     }
 
-    fn get_activator(&mut self) -> impl Future<Output = Result<Option<User>, Self::Error>> {
+    fn get_activator(&mut self) -> impl Send + Future<Output = Result<Option<User>, Self::Error>> {
         use crate::schema::active_version::dsl::active_version;
 
         async move {
@@ -516,7 +517,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
         }
     }
 
-    fn get_version_metadata(&mut self, version: u64) -> impl Future<Output = Result<Metadata, Self::Error>> {
+    fn get_version_metadata(&mut self, version: u64) -> impl Send + Future<Output = Result<Metadata, Self::Error>> {
         use crate::schema::policies::dsl as policy;
 
         async move {
@@ -553,7 +554,7 @@ impl<'a, C: DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnectio
         }
     }
 
-    fn get_version_content(&mut self, version: u64) -> impl Future<Output = Result<Self::Content, Self::Error>> {
+    fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Self::Content, Self::Error>> {
         use crate::schema::policies::dsl as policy;
 
         async move {

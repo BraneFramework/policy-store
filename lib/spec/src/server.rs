@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:37:44
 //  Last edited:
-//    23 Oct 2024, 11:48:46
+//    24 Oct 2024, 13:47:34
 //  Auto updated?
 //    Yes
 //
@@ -15,8 +15,6 @@
 
 use std::error::Error;
 use std::future::Future;
-
-use never_say_never::Never;
 
 
 /***** LIBRARY *****/
@@ -30,13 +28,12 @@ pub trait Server {
     /// Runs this server.
     ///
     /// This will hijack the current codeflow and keep serving the server until the end of the
-    /// universe (or until the server itself quits).
+    /// universe! ...or until the server quits.
     ///
-    /// # Returns
-    /// [`Never`].
+    /// In case of the latter, the thread just returns.
     ///
     /// # Errors
     /// This function may error if the server failed to listen of if a fatal server errors comes
     /// along as it serves. However, client-side errors should not trigger errors at this level.
-    fn serve(self) -> impl Future<Output = Result<Never, Self::Error>>;
+    fn serve(self) -> impl Future<Output = Result<(), Self::Error>>;
 }

@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:31:06
 //  Last edited:
-//    23 Oct 2024, 16:29:55
+//    24 Oct 2024, 12:00:58
 //  Auto updated?
 //    Yes
 //
@@ -65,5 +65,5 @@ pub trait AuthResolver {
     ///
     /// The first will always result in a (vague) 500 INTERNAL SERVER ERROR to the user, whereas
     /// the second may communicate custom status codes.
-    fn authorize(&self, headers: &HeaderMap) -> impl Future<Output = Result<Result<Self::Context, Self::ClientError>, Self::ServerError>>;
+    fn authorize(&self, headers: &HeaderMap) -> impl Send + Future<Output = Result<Result<Self::Context, Self::ClientError>, Self::ServerError>>;
 }

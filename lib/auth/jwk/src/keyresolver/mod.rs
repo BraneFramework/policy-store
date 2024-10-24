@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:58:43
 //  Last edited:
-//    23 Oct 2024, 11:25:47
+//    24 Oct 2024, 11:13:24
 //  Auto updated?
 //    Yes
 //
@@ -55,5 +55,5 @@ pub trait KeyResolver {
     ///
     /// The first will always result in a (vague) 500 INTERNAL SERVER ERROR to the user, whereas
     /// the second may communicate custom status codes.
-    fn resolve_key(&self, header: &Header) -> impl Future<Output = Result<Result<DecodingKey, Self::ClientError>, Self::ServerError>>;
+    fn resolve_key(&self, header: &Header) -> impl Send + Sync + Future<Output = Result<Result<DecodingKey, Self::ClientError>, Self::ServerError>>;
 }

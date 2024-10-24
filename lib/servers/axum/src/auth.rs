@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:58:43
 //  Last edited:
-//    23 Oct 2024, 16:29:52
+//    24 Oct 2024, 11:14:57
 //  Auto updated?
 //    Yes
 //
@@ -12,7 +12,6 @@
 //!   Implements the server's authorization middleware.
 //
 
-use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -21,7 +20,6 @@ use axum::extract::{ConnectInfo, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::Response;
-use axum_macros::debug_handler;
 use error_trace::ErrorTrace as _;
 use specifications::authresolver::ClientError;
 use specifications::AuthResolver;
@@ -58,6 +56,9 @@ impl<E: 'static + ClientError> ClientError for Error<E> {
 impl<A, D> AxumServer<A, D>
 where
     A: AuthResolver,
+    A::Context: 'static + Send + Sync + Clone,
+    A::ClientError: 'static,
+    A::ServerError: 'static,
 {
     pub(crate) async fn check(
         State(context): State<Arc<Self>>,
@@ -65,33 +66,30 @@ where
         mut request: Request,
         next: Next,
     ) -> Response {
-        // let _span = span!(Level::INFO, "AxumServer::check", client = client.to_string());
-        let _span = span!(Level::INFO, "AxumServer::check");
+        let _span = span!(Level::INFO, "AxumServer::check", client = client.to_string());
 
         // Do the auth thingy
         let user: A::Context = match context.auth.authorize(request.headers()).await {
             Ok(Ok(user)) => user,
             Ok(Err(err)) => {
-                // let err = Error::AuthorizeFailed { err };
-                // error!("{}", err.trace());
-                // let mut res =
-                //     Response::new(Body::from(serde_json::to_string(&err.freeze()).unwrap_or_else(|err| panic!("Failed to serialize Trace: {err}"))));
-                // *res.status_mut() = err.status_code();
-                // return res;
-                todo!()
+                let err = Error::AuthorizeFailed { err };
+                error!("{}", err.trace());
+                let mut res =
+                    Response::new(Body::from(serde_json::to_string(&err.freeze()).unwrap_or_else(|err| panic!("Failed to serialize Trace: {err}"))));
+                *res.status_mut() = err.status_code();
+                return res;
             },
             Err(err) => {
-                // let err = Error::AuthorizeFailed { err };
-                // // error!("{}", err.trace());
-                // let mut res = Response::new(Body::from(err.to_string()));
-                // *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                // return res;
-                todo!()
+                let err = Error::AuthorizeFailed { err };
+                // error!("{}", err.trace());
+                let mut res = Response::new(Body::from(err.to_string()));
+                *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                return res;
             },
         };
 
-        // // If we found a context, then inject it in the request as an extension; then continue
-        // request.extensions_mut().insert(user);
+        // If we found a context, then inject it in the request as an extension; then continue
+        request.extensions_mut().insert(user);
         next.run(request).await
     }
 }

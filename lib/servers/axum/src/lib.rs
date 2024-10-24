@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:25:43
 //  Last edited:
-//    23 Oct 2024, 13:59:19
+//    24 Oct 2024, 12:07:02
 //  Auto updated?
 //    Yes
 //
@@ -17,6 +17,7 @@
 mod auth;
 mod paths;
 mod server;
+pub mod spec;
 
 // Use some of it
 pub use server::*;

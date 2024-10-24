@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:37:53
 //  Last edited:
-//    23 Oct 2024, 16:30:04
+//    24 Oct 2024, 12:02:15
 //  Auto updated?
 //    Yes
 //
@@ -161,7 +161,7 @@ impl<K> JwkResolver<K> {
 }
 impl<K> AuthResolver for JwkResolver<K>
 where
-    K: KeyResolver,
+    K: Sync + KeyResolver,
     ClientError: From<K::ClientError>,
     ServerError: From<K::ServerError>,
 {
@@ -173,7 +173,7 @@ where
     fn authorize(
         &self,
         headers: &HeaderMap<HeaderValue>,
-    ) -> impl Future<Output = Result<Result<Self::Context, Self::ClientError>, Self::ServerError>> {
+    ) -> impl Send + Future<Output = Result<Result<Self::Context, Self::ClientError>, Self::ServerError>> {
         async move {
             let _span = span!(Level::INFO, "JwkResolver::authorize");
             info!("Handling JWT authentication for incoming request");

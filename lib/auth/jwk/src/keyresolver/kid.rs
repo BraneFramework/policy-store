@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:16:54
 //  Last edited:
-//    23 Oct 2024, 13:59:07
+//    24 Oct 2024, 11:13:04
 //  Auto updated?
 //    Yes
 //
@@ -109,7 +109,7 @@ impl KeyResolver for KidResolver {
     type ServerError = ServerError;
 
 
-    fn resolve_key(&self, header: &Header) -> impl Future<Output = Result<Result<DecodingKey, Self::ClientError>, Self::ServerError>> {
+    fn resolve_key(&self, header: &Header) -> impl Send + Sync + Future<Output = Result<Result<DecodingKey, Self::ClientError>, Self::ServerError>> {
         async move {
             let _span = span!(Level::INFO, "KidResolver::resolve_key");
 

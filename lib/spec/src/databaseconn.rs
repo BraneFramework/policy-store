@@ -4,7 +4,7 @@
 //  Created:
 //    18 Oct 2024, 17:38:33
 //  Last edited:
-//    22 Oct 2024, 16:08:35
+//    24 Oct 2024, 13:05:32
 //  Auto updated?
 //    Yes
 //
@@ -25,8 +25,10 @@ use crate::metadata::{AttachedMetadata, Metadata, User};
 /// Note that connectors should assume asynchronous usage of their interface. As such, `self` is
 /// only passed by non-mutable reference.
 pub trait DatabaseConnector {
+    /// The type of things stored in the backend database.
+    type Content;
     /// The connection that is created and scoped to a user.
-    type Connection<'s>: DatabaseConnection
+    type Connection<'s>: DatabaseConnection<Content = Self::Content>
     where
         Self: 's;
     /// The type of errors returned by the connector.
@@ -42,7 +44,7 @@ pub trait DatabaseConnector {
     ///
     /// # Errors
     /// This function can error if it failed to create the new connection.
-    fn connect<'s>(&'s self, user: &'s User) -> impl Future<Output = Result<Self::Connection<'s>, Self::Error>>;
+    fn connect<'s>(&'s self, user: &'s User) -> impl Send + Future<Output = Result<Self::Connection<'s>, Self::Error>>;
 }
 
 
@@ -67,7 +69,7 @@ pub trait DatabaseConnection {
     ///
     /// # Errors
     /// This function may error if it failed to add the version to the backend database.
-    fn add_version(&mut self, metadata: AttachedMetadata, content: Self::Content) -> impl Future<Output = Result<u64, Self::Error>>;
+    fn add_version(&mut self, metadata: AttachedMetadata, content: Self::Content) -> impl Send + Future<Output = Result<u64, Self::Error>>;
     /// Marks one particular version of the policy as active.
     ///
     /// Active policy is the one queried by the reasoner.
@@ -78,13 +80,13 @@ pub trait DatabaseConnection {
     /// # Errors
     /// This function may error if it failed to set the active policy in the backend database or if
     /// `version` does not exist.
-    fn activate(&mut self, version: u64) -> impl Future<Output = Result<(), Self::Error>>;
+    fn activate(&mut self, version: u64) -> impl Send + Future<Output = Result<(), Self::Error>>;
     /// "Panic button" that replaces the currently active policy with a policy that always denies
     /// all incoming requests.
     ///
     /// # Errors
     /// This function may error if it failed to set the active policy in the backend database.
-    fn deactivate(&mut self) -> impl Future<Output = Result<(), Self::Error>>;
+    fn deactivate(&mut self) -> impl Send + Future<Output = Result<(), Self::Error>>;
 
     // Read-only
     /// Gets a list of all versions in the database together with their metadata.
@@ -94,7 +96,7 @@ pub trait DatabaseConnection {
     ///
     /// # Errors
     /// This function may error if it failed to get the policies from the backend database.
-    fn get_versions(&mut self) -> impl Future<Output = Result<HashMap<u64, Metadata>, Self::Error>>;
+    fn get_versions(&mut self) -> impl Send + Future<Output = Result<HashMap<u64, Metadata>, Self::Error>>;
     /// Retrieves the active version from the policy database.
     ///
     /// # Returns
@@ -102,7 +104,7 @@ pub trait DatabaseConnection {
     ///
     /// # Errors
     /// This function may error if it failed to get the policies from the backend database.
-    fn get_active_version(&mut self) -> impl Future<Output = Result<Option<u64>, Self::Error>>;
+    fn get_active_version(&mut self) -> impl Send + Future<Output = Result<Option<u64>, Self::Error>>;
     /// Retrieves the person who activated the policy.
     ///
     /// # Returns
@@ -110,7 +112,7 @@ pub trait DatabaseConnection {
     ///
     /// # Errors
     /// This function may error if it failed to get the policies from the backend database.
-    fn get_activator(&mut self) -> impl Future<Output = Result<Option<User>, Self::Error>>;
+    fn get_activator(&mut self) -> impl Send + Future<Output = Result<Option<User>, Self::Error>>;
     /// Retrieves a particular policy version's metadata from the database.
     ///
     /// # Arguments
@@ -122,7 +124,7 @@ pub trait DatabaseConnection {
     /// # Errors
     /// This function may error if it failed to retrieve the version from the backend database, or
     /// if that version didn't exist.
-    fn get_version_metadata(&mut self, version: u64) -> impl Future<Output = Result<Metadata, Self::Error>>;
+    fn get_version_metadata(&mut self, version: u64) -> impl Send + Future<Output = Result<Metadata, Self::Error>>;
     /// Retrieves a particular policy version from the database.
     ///
     /// # Arguments
@@ -134,5 +136,5 @@ pub trait DatabaseConnection {
     /// # Errors
     /// This function may error if it failed to retrieve the version from the backend database, or
     /// if that version didn't exist.
-    fn get_version_content(&mut self, version: u64) -> impl Future<Output = Result<Self::Content, Self::Error>>;
+    fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Self::Content, Self::Error>>;
 }
