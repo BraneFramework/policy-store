@@ -4,7 +4,7 @@
 //  Created:
 //    18 Oct 2024, 17:38:33
 //  Last edited:
-//    24 Oct 2024, 13:05:32
+//    24 Oct 2024, 16:36:28
 //  Auto updated?
 //    Yes
 //
@@ -119,22 +119,22 @@ pub trait DatabaseConnection {
     /// - `version`: The policy version to retrieve.
     ///
     /// # Returns
-    /// A [`Metadata`] describing the metadata behind the requested policy.
+    /// A [`Metadata`] describing the metadata behind the requested policy, or [`None`] if the given version wasn't found.
     ///
     /// # Errors
     /// This function may error if it failed to retrieve the version from the backend database, or
     /// if that version didn't exist.
-    fn get_version_metadata(&mut self, version: u64) -> impl Send + Future<Output = Result<Metadata, Self::Error>>;
+    fn get_version_metadata(&mut self, version: u64) -> impl Send + Future<Output = Result<Option<Metadata>, Self::Error>>;
     /// Retrieves a particular policy version from the database.
     ///
     /// # Arguments
     /// - `version`: The policy version to retrieve.
     ///
     /// # Returns
-    /// A [`DatabaseConnection::Content`] that represents the requested policy.
+    /// A [`DatabaseConnection::Content`] that represents the requested policy, or [`None`] if the given version wasn't found.
     ///
     /// # Errors
     /// This function may error if it failed to retrieve the version from the backend database, or
     /// if that version didn't exist.
-    fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Self::Content, Self::Error>>;
+    fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Option<Self::Content>, Self::Error>>;
 }

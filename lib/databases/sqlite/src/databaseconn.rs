@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    24 Oct 2024, 14:22:15
+//    24 Oct 2024, 16:37:59
 //  Auto updated?
 //    Yes
 //
@@ -174,9 +174,6 @@ pub enum ConnectionError {
         #[source]
         err: diesel::result::Error,
     },
-    /// Encountered an non-existing version.
-    #[error("Version {version:?} not found in backend database {:?}", path.display())]
-    VersionNotFound { path: PathBuf, version: u64 },
 }
 // Note: implemented to always error for transaction
 impl From<diesel::result::Error> for ConnectionError {
@@ -518,7 +515,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
         }
     }
 
-    fn get_version_metadata(&mut self, version: u64) -> impl Send + Future<Output = Result<Metadata, Self::Error>> {
+    fn get_version_metadata(&mut self, version: u64) -> impl Send + Future<Output = Result<Option<Metadata>, Self::Error>> {
         use crate::schema::policies::dsl as policy;
 
         async move {
@@ -535,27 +532,27 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                 Ok(mut r) => {
                     // Extract the version itself
                     if r.len() < 1 {
-                        return Err(ConnectionError::VersionNotFound { path: self.path.into(), version });
+                        return Ok(None);
                     }
                     let (description, name, version, creator, created_at) = r.remove(0);
 
                     // Done, return the thing
-                    Ok(Metadata {
+                    Ok(Some(Metadata {
                         attached: AttachedMetadata { name, description },
                         created:  created_at.and_utc(),
                         creator:  User { id: creator, name: "John Smith".into() },
                         version:  version as u64,
-                    })
+                    }))
                 },
-                Err(err) => Err(match err {
-                    diesel::result::Error::NotFound => ConnectionError::VersionNotFound { path: self.path.into(), version },
-                    err => ConnectionError::GetVersion { path: self.path.into(), version, err },
-                }),
+                Err(err) => match err {
+                    diesel::result::Error::NotFound => Ok(None),
+                    err => Err(ConnectionError::GetVersion { path: self.path.into(), version, err }),
+                },
             }
         }
     }
 
-    fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Self::Content, Self::Error>> {
+    fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Option<Self::Content>, Self::Error>> {
         use crate::schema::policies::dsl as policy;
 
         async move {
@@ -573,20 +570,20 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                     Ok(mut r) => {
                         // Extract the version itself
                         if r.len() < 1 {
-                            return Err(ConnectionError::VersionNotFound { path: self.path.into(), version });
+                            return Ok(None);
                         }
                         let (name, content) = r.remove(0);
 
                         // Deserialize the content
                         match serde_json::from_str(&content) {
-                            Ok(content) => Ok(content),
+                            Ok(content) => Ok(Some(content)),
                             Err(err) => Err(ConnectionError::ContentDeserialize { name, version, err }),
                         }
                     },
-                    Err(err) => Err(match err {
-                        diesel::result::Error::NotFound => ConnectionError::VersionNotFound { path: self.path.into(), version },
-                        err => ConnectionError::GetVersion { path: self.path.into(), version, err },
-                    }),
+                    Err(err) => match err {
+                        diesel::result::Error::NotFound => Ok(None),
+                        err => Err(ConnectionError::GetVersion { path: self.path.into(), version, err }),
+                    },
                 }
             })
         }

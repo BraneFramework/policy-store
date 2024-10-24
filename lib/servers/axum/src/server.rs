@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:28:29
 //  Last edited:
-//    24 Oct 2024, 14:39:47
+//    24 Oct 2024, 16:42:32
 //  Auto updated?
 //    Yes
 //
@@ -17,7 +17,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
-use axum::routing::post;
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use error_trace::trace;
 use hyper::body::Incoming;
@@ -25,6 +25,7 @@ use hyper::Request;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder as HyperBuilder;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use specifications::{AuthResolver, DatabaseConnector, Server};
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
@@ -81,7 +82,7 @@ where
     A::ClientError: 'static,
     A::ServerError: 'static,
     D: 'static + Send + Sync + DatabaseConnector,
-    D::Content: DeserializeOwned + Send,
+    D::Content: Send + DeserializeOwned + Serialize,
     for<'s> D::Connection<'s>: Send,
 {
     type Error = Error;
@@ -97,8 +98,44 @@ where
                 .route("/policies", post(Self::add_version))
                 .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
                 .with_state(this.clone());
-            let router: IntoMakeServiceWithConnectInfo<Router, SocketAddr> =
-                Router::new().nest("/", add_version).into_make_service_with_connect_info();
+            let activate: Router = Router::new()
+                .route("/policies/active", put(Self::activate))
+                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+                .with_state(this.clone());
+            let deactivate: Router = Router::new()
+                .route("/policies/active", delete(Self::deactivate))
+                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+                .with_state(this.clone());
+            let get_versions: Router = Router::new()
+                .route("/policies", get(Self::get_versions))
+                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+                .with_state(this.clone());
+            let get_active_version: Router = Router::new()
+                .route("/policies/active", get(Self::get_active_version))
+                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+                .with_state(this.clone());
+            let get_activator: Router = Router::new()
+                .route("/policies/active/activator", get(Self::get_activator))
+                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+                .with_state(this.clone());
+            let get_version_metadata: Router = Router::new()
+                .route("/policies/:version", get(Self::get_version_metadata))
+                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+                .with_state(this.clone());
+            let get_version_content: Router = Router::new()
+                .route("/policies/:version/content", get(Self::get_version_content))
+                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+                .with_state(this.clone());
+            let router: IntoMakeServiceWithConnectInfo<Router, SocketAddr> = Router::new()
+                .nest("/v2/", add_version)
+                .nest("/v2/", activate)
+                .nest("/v2/", deactivate)
+                .nest("/v2/", get_versions)
+                .nest("/v2/", get_active_version)
+                .nest("/v2/", get_activator)
+                .nest("/v2/", get_version_metadata)
+                .nest("/v2/", get_version_content)
+                .into_make_service_with_connect_info();
 
             // Bind the TCP Listener
             debug!("Binding server on '{}'...", this.addr);
