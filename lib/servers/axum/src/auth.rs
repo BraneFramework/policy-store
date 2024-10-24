@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:58:43
 //  Last edited:
-//    24 Oct 2024, 11:14:57
+//    24 Oct 2024, 14:35:28
 //  Auto updated?
 //    Yes
 //
@@ -24,7 +24,7 @@ use error_trace::ErrorTrace as _;
 use specifications::authresolver::ClientError;
 use specifications::AuthResolver;
 use thiserror::Error;
-use tracing::{error, span, Level};
+use tracing::{error, info, span, Level};
 
 use crate::server::AxumServer;
 
@@ -73,7 +73,7 @@ where
             Ok(Ok(user)) => user,
             Ok(Err(err)) => {
                 let err = Error::AuthorizeFailed { err };
-                error!("{}", err.trace());
+                info!("{}", err.trace());
                 let mut res =
                     Response::new(Body::from(serde_json::to_string(&err.freeze()).unwrap_or_else(|err| panic!("Failed to serialize Trace: {err}"))));
                 *res.status_mut() = err.status_code();
@@ -81,7 +81,7 @@ where
             },
             Err(err) => {
                 let err = Error::AuthorizeFailed { err };
-                // error!("{}", err.trace());
+                error!("{}", err.trace());
                 let mut res = Response::new(Body::from(err.to_string()));
                 *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                 return res;

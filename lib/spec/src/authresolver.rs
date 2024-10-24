@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:31:06
 //  Last edited:
-//    24 Oct 2024, 12:00:58
+//    24 Oct 2024, 13:53:15
 //  Auto updated?
 //    Yes
 //
@@ -13,6 +13,7 @@
 //!   and use it to authorize it.
 //
 
+use std::convert::Infallible;
 use std::error::Error;
 use std::future::Future;
 
@@ -27,6 +28,12 @@ pub trait ClientError: Error {
     /// # Returns
     /// A [`StatusCode`].
     fn status_code(&self) -> StatusCode;
+}
+
+// Default impls
+impl ClientError for Infallible {
+    #[inline]
+    fn status_code(&self) -> StatusCode { unreachable!() }
 }
 
 

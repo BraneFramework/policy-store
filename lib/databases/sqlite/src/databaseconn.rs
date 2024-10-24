@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    24 Oct 2024, 13:05:25
+//    24 Oct 2024, 14:22:15
 //  Auto updated?
 //    Yes
 //
@@ -240,7 +240,7 @@ impl<C> SQLiteDatabase<C> {
             };
 
             // Apply them by connecting to the database
-            let mut conn: SqliteConnection = match SqliteConnection::establish(&format!("file://{}", path.display())) {
+            let mut conn: SqliteConnection = match SqliteConnection::establish(&path.display().to_string()) {
                 Ok(conn) => conn,
                 Err(err) => return Err(DatabaseError::ConnectDatabase { path, err }),
             };
@@ -252,7 +252,8 @@ impl<C> SQLiteDatabase<C> {
         }
 
         // Create the pool
-        let pool: Pool<_> = match Pool::new(ConnectionManager::new(format!("file://{}", path.display()))) {
+        debug!("Connecting to database {:?}...", path.display());
+        let pool: Pool<_> = match Pool::new(ConnectionManager::new(path.display().to_string())) {
             Ok(pool) => pool,
             Err(err) => return Err(DatabaseError::PoolCreate { path, err }),
         };

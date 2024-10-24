@@ -6,6 +6,7 @@ members = [
 
     # Auth
     "lib/auth/jwk",
+    "lib/auth/no-op",
 
     # Databases
     "lib/databases/sqlite",
@@ -30,11 +31,27 @@ repository = "https://github.com/epi-project/policy-store"
 license = "Apache-2.0"
 
 
+[[example]]
+name = "sqlite"
+path = "examples/sqlite/main.rs"
+required-features = ["axum-server", "no-op-auth", "sqlite-database"]
+
+
 [dependencies]
-axum-api = { path = "lib/servers/axum", optional = true }
+axum-server = { path = "lib/servers/axum", optional = true }
 jwk-auth = { path = "lib/auth/jwk", optional = true }
+no-op-auth = { path = "lib/auth/no-op", optional = true }
 specifications = { path = "lib/spec" }
 sqlite-database = { path = "lib/databases/sqlite", optional = true }
+
+
+[dev-dependencies]
+clap = { version = "4.5.20", features = ["derive"] }
+tokio = { version = "1.0", default-features = false, features = ["macros", "rt"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+error-trace = { git = "https://github.com/Lut99/error-trace-rs", tag = "v3.2.1" }
 
 
 [features]
@@ -42,11 +59,12 @@ default = []
 
 all = ["servers", "auths", "databases"]
 
-servers = ["axum-api"]
-axum-api = ["dep:axum-api"]
+servers = ["axum-server"]
+axum-server = ["dep:axum-server"]
 
-auths = ["jwk-auth"]
+auths = ["jwk-auth", "no-op-auth"]
 jwk-auth = ["dep:jwk-auth"]
+no-op-auth = ["dep:no-op-auth"]
 
 databases = ["sqlite-database"]
 sqlite-database = ["dep:sqlite-database"]
