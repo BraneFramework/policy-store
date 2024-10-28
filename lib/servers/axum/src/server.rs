@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:28:29
 //  Last edited:
-//    24 Oct 2024, 16:42:32
+//    28 Oct 2024, 20:46:11
 //  Auto updated?
 //    Yes
 //
@@ -16,23 +16,22 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum::Router;
 use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 use axum::routing::{delete, get, post, put};
-use axum::Router;
 use error_trace::trace;
-use hyper::body::Incoming;
 use hyper::Request;
+use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder as HyperBuilder;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use specifications::{AuthResolver, DatabaseConnector, Server};
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::signal::unix::{signal, SignalKind};
 use tower_service::Service as _;
 use tracing::field::Empty;
-use tracing::{debug, error, info, span, warn, Level};
+use tracing::{Level, debug, error, info, span};
 
 
 /***** ERRORS *****/
@@ -147,71 +146,38 @@ where
             // Accept new connections!
             info!("Initialization OK, awaiting connections...");
             span.record("state", "running");
-            tokio::select! {
-                _ = async move {
-                    loop {
-                        // Accept a new connection
-                        let (socket, remote_addr): (TcpStream, SocketAddr) = match listener.accept().await {
-                            Ok(res) => res,
-                            Err(err) => {
-                                error!("{}", trace!(("Failed to accept incoming connection"), err));
-                                continue;
-                            },
-                        };
-                        span.record("client", remote_addr.to_string());
+            loop {
+                // Accept a new connection
+                let (socket, remote_addr): (TcpStream, SocketAddr) = match listener.accept().await {
+                    Ok(res) => res,
+                    Err(err) => {
+                        error!("{}", trace!(("Failed to accept incoming connection"), err));
+                        continue;
+                    },
+                };
+                span.record("client", remote_addr.to_string());
 
-                        // Move the rest to a separate task
-                        let router: IntoMakeServiceWithConnectInfo<_, _> = router.clone();
-                        tokio::spawn(async move {
-                            debug!("Handling incoming connection from '{remote_addr}'");
+                // Move the rest to a separate task
+                let router: IntoMakeServiceWithConnectInfo<_, _> = router.clone();
+                tokio::spawn(async move {
+                    debug!("Handling incoming connection from '{remote_addr}'");
 
-                            // Build  the service
-                            let service = hyper::service::service_fn(|request: Request<Incoming>| {
-                                // Sadly, we must `move` again because this service could be called multiple times (at least according to the typesystem)
-                                let mut router = router.clone();
-                                async move {
-                                    // SAFETY: We can call `unwrap()` because the call returns an infallible.
-                                    router.call(remote_addr).await.unwrap().call(request).await
-                                }
-                            });
+                    // Build  the service
+                    let service = hyper::service::service_fn(|request: Request<Incoming>| {
+                        // Sadly, we must `move` again because this service could be called multiple times (at least according to the typesystem)
+                        let mut router = router.clone();
+                        async move {
+                            // SAFETY: We can call `unwrap()` because the call returns an infallible.
+                            router.call(remote_addr).await.unwrap().call(request).await
+                        }
+                    });
 
-                            // Create a service that handles this for us
-                            let socket: TokioIo<_> = TokioIo::new(socket);
-                            if let Err(err) = HyperBuilder::new(TokioExecutor::new()).serve_connection_with_upgrades(socket, service).await {
-                                error!("{}", trace!(("Failed to serve incoming connection"), *err));
-                            }
-                        });
+                    // Create a service that handles this for us
+                    let socket: TokioIo<_> = TokioIo::new(socket);
+                    if let Err(err) = HyperBuilder::new(TokioExecutor::new()).serve_connection_with_upgrades(socket, service).await {
+                        error!("{}", trace!(("Failed to serve incoming connection"), *err));
                     }
-                } => {
-                    unreachable!();
-                },
-
-                _ = async move {
-                    match signal(SignalKind::interrupt()) {
-                        Ok(mut sign) => sign.recv().await,
-                        Err(err) => {
-                            warn!("{}", trace!(("Failed to register SIGINT signal handler"), err));
-                            warn!("Graceful shutdown by Ctrl+C disabled");
-                            None
-                        },
-                    }
-                } => {
-                    debug!("Received SIGINT");
-                    Ok(())
-                },
-                _ = async move {
-                    match signal(SignalKind::terminate()) {
-                        Ok(mut sign) => sign.recv().await,
-                        Err(err) => {
-                            warn!("{}", trace!(("Failed to register SIGTERM signal handler"), err));
-                            warn!("Graceful shutdown by Docker disabled");
-                            None
-                        },
-                    }
-                } => {
-                    debug!("Received SIGTERM");
-                    Ok(())
-                },
+                });
             }
         }
     }

@@ -4,7 +4,7 @@
 //  Created:
 //    24 Oct 2024, 13:55:22
 //  Last edited:
-//    24 Oct 2024, 14:45:19
+//    28 Oct 2024, 20:48:09
 //  Auto updated?
 //    Yes
 //
@@ -21,7 +21,8 @@ use policy_store::auth::no_op::NoOpResolver;
 use policy_store::databases::sqlite::SQLiteDatabase;
 use policy_store::servers::axum::AxumServer;
 use policy_store::spec::Server as _;
-use tracing::{error, info, Level};
+use tokio::signal::unix::{SignalKind, signal};
+use tracing::{Level, debug, error, info, warn};
 
 
 /***** ARGUMENTS *****/
@@ -84,11 +85,38 @@ async fn main() {
 
     // OK, setup the server
     let server = AxumServer::new(args.address, auth, db);
-    match server.serve().await {
-        Ok(_) => info!("Done"),
-        Err(err) => {
-            error!("{}", trace!(("Failed to serve the server"), err));
-            std::process::exit(1);
+    tokio::select! {
+        res = server.serve() => match res {
+            Ok(_) => info!("Done"),
+            Err(err) => {
+                error!("{}", trace!(("Failed to serve the server"), err));
+                std::process::exit(1);
+            },
+        },
+
+        _ = async move {
+            match signal(SignalKind::interrupt()) {
+                Ok(mut sign) => sign.recv().await,
+                Err(err) => {
+                    warn!("{}", trace!(("Failed to register SIGINT signal handler"), err));
+                    warn!("Graceful shutdown by Ctrl+C disabled");
+                    None
+                },
+            }
+        } => {
+            debug!("Received SIGINT");
+        },
+        _ = async move {
+            match signal(SignalKind::terminate()) {
+                Ok(mut sign) => sign.recv().await,
+                Err(err) => {
+                    warn!("{}", trace!(("Failed to register SIGTERM signal handler"), err));
+                    warn!("Graceful shutdown by Docker disabled");
+                    None
+                },
+            }
+        } => {
+            debug!("Received SIGTERM");
         },
     }
 }
