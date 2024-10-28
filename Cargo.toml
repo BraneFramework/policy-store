@@ -68,3 +68,5 @@ no-op-auth = ["dep:no-op-auth"]
 
 databases = ["sqlite-database"]
 sqlite-database = ["dep:sqlite-database"]
+
+jwk-auth-kid = ["jwk-auth/kid"]
