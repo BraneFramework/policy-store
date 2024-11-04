@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:37:53
 //  Last edited:
-//    24 Oct 2024, 12:02:15
+//    04 Nov 2024, 15:26:50
 //  Auto updated?
 //    Yes
 //
@@ -19,6 +19,7 @@ use std::future::Future;
 use http::header::AUTHORIZATION;
 use http::{HeaderMap, HeaderValue, StatusCode};
 use jsonwebtoken::{Header, Validation};
+use specifications::authresolver::HttpError;
 use specifications::metadata::User;
 use specifications::AuthResolver;
 use thiserror::Error;
@@ -72,12 +73,12 @@ pub enum ClientError {
     },
     /// The embedded [`KeyResolver`] failed to resolve a key due to some client-side error.
     #[error("Failed to resolve key")]
-    KeyResolve { err: Box<dyn 'static + specifications::authresolver::ClientError> },
+    KeyResolve { err: Box<dyn 'static + HttpError> },
     /// The given 'Authorization'-header was missing the 'Bearer '-part.
     #[error("Missing \"Bearer \" in header {header:?} in request (raw value: {raw:?})")]
     MissingBearer { header: &'static str, raw: String },
 }
-impl specifications::authresolver::ClientError for ClientError {
+impl HttpError for ClientError {
     #[inline]
     fn status_code(&self) -> StatusCode {
         use ClientError::*;

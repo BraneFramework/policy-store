@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:31:06
 //  Last edited:
-//    24 Oct 2024, 13:53:15
+//    04 Nov 2024, 15:26:10
 //  Auto updated?
 //    Yes
 //
@@ -22,7 +22,7 @@ use http::{HeaderMap, StatusCode};
 
 /***** AUXILLARY *****/
 /// Extends an [`Error`] with the ability to associate status codes with it.
-pub trait ClientError: Error {
+pub trait HttpError: Error {
     /// Returns the status code associated with this error.
     ///
     /// # Returns
@@ -31,7 +31,7 @@ pub trait ClientError: Error {
 }
 
 // Default impls
-impl ClientError for Infallible {
+impl HttpError for Infallible {
     #[inline]
     fn status_code(&self) -> StatusCode { unreachable!() }
 }
@@ -50,7 +50,7 @@ pub trait AuthResolver {
     /// identifier).
     type Context;
     /// Client-side errors produced by the AuthResolver.
-    type ClientError: ClientError;
+    type ClientError: HttpError;
     /// Server-side errors produced by the AuthResolver.
     type ServerError: Error;
 

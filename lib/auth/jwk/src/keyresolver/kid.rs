@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:16:54
 //  Last edited:
-//    24 Oct 2024, 11:13:04
+//    04 Nov 2024, 15:26:40
 //  Auto updated?
 //    Yes
 //
@@ -20,6 +20,7 @@ use base64ct::Encoding as _;
 use http::StatusCode;
 use jsonwebtoken::jwk::{AlgorithmParameters, Jwk, JwkSet};
 use jsonwebtoken::{DecodingKey, Header};
+use specifications::authresolver::HttpError;
 use thiserror::Error;
 use tracing::{debug, span, Level};
 
@@ -59,7 +60,7 @@ pub enum ClientError {
     #[error("Unknown key with ID {kid:?}")]
     UnknownKeyId { kid: String },
 }
-impl specifications::authresolver::ClientError for ClientError {
+impl HttpError for ClientError {
     #[inline]
     fn status_code(&self) -> StatusCode {
         use ClientError::*;

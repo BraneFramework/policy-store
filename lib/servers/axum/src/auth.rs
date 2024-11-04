@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:58:43
 //  Last edited:
-//    24 Oct 2024, 14:35:28
+//    04 Nov 2024, 15:27:01
 //  Auto updated?
 //    Yes
 //
@@ -21,7 +21,7 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::Response;
 use error_trace::ErrorTrace as _;
-use specifications::authresolver::ClientError;
+use specifications::authresolver::HttpError;
 use specifications::AuthResolver;
 use thiserror::Error;
 use tracing::{error, info, span, Level};
@@ -39,7 +39,7 @@ enum Error<E> {
         err: E,
     },
 }
-impl<E: 'static + ClientError> ClientError for Error<E> {
+impl<E: 'static + HttpError> HttpError for Error<E> {
     #[inline]
     fn status_code(&self) -> StatusCode {
         match self {
