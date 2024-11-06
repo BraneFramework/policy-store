@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    24 Oct 2024, 16:37:59
+//    06 Nov 2024, 14:09:58
 //  Auto updated?
 //    Yes
 //
@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{NaiveDateTime, Utc};
 use diesel::connection::LoadConnection;
+use diesel::migration::MigrationSource;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::sqlite::Sqlite;
 use diesel::{Connection as _, ExpressionMethods as _, QueryDsl as _, RunQueryDsl as _, SelectableHelper as _, SqliteConnection};
@@ -68,17 +69,15 @@ pub enum DatabaseError {
         err:  std::io::Error,
     },
     /// Failed to apply the migrations in a particular folder to a particular database.
-    #[error("Failed to apply migrations in folder {:?} to new database {:?}", migrations_dir.display(), path.display())]
+    #[error("Failed to apply migrations to new database {:?}", path.display())]
     MigrationsApply {
         path: PathBuf,
-        migrations_dir: PathBuf,
         #[source]
-        err: Box<dyn 'static + std::error::Error>,
+        err:  Box<dyn 'static + std::error::Error>,
     },
     /// Failed to find the migrations for a database in the given folder.
-    #[error("Failed to find migrations for new database {:?} in migrations folder {:?}", path.display(), migrations_dir.display())]
+    #[error("Failed to find migrations in migrations folder {:?}", migrations_dir.display())]
     MigrationsFind {
-        path: PathBuf,
         migrations_dir: PathBuf,
         #[source]
         err: diesel_migrations::MigrationError,
@@ -201,7 +200,7 @@ impl<C> SQLiteDatabase<C> {
     ///
     /// # Arguments
     /// - `path`: The path of the database to connect to.
-    /// - `migrations_dir`: A directory with migrations to apply when creating a new database.
+    /// - `migrations`: A [`MigrationSource`] with migrations to apply when creating a new database.
     ///
     /// # Returns
     /// A new SQLiteDatabase struct that can be used to connect to the backend file.
@@ -209,9 +208,8 @@ impl<C> SQLiteDatabase<C> {
     /// # Errors
     /// This function may fail if we failed to setup a connection pool to the given path, or if we
     /// failed to apply the migrations in case it's a new file.
-    pub async fn new_async(path: impl Into<PathBuf>, migrations_dir: impl AsRef<Path>) -> Result<Self, DatabaseError> {
+    pub async fn new_async(path: impl Into<PathBuf>, migrations: impl MigrationSource<Sqlite>) -> Result<Self, DatabaseError> {
         let path: PathBuf = path.into();
-        let migrations_dir: &Path = migrations_dir.as_ref();
         debug!("Creating new SQLite connector to {:?}...", path.display());
 
         // Check if we need to create it first
@@ -230,19 +228,13 @@ impl<C> SQLiteDatabase<C> {
                 return Err(DatabaseError::DatabaseCreate { path, err });
             }
 
-            // Get the migrations defined
-            let migrations: FileBasedMigrations = match FileBasedMigrations::find_migrations_directory_in_path(migrations_dir) {
-                Ok(migrations) => migrations,
-                Err(err) => return Err(DatabaseError::MigrationsFind { path, migrations_dir: migrations_dir.into(), err }),
-            };
-
             // Apply them by connecting to the database
             let mut conn: SqliteConnection = match SqliteConnection::establish(&path.display().to_string()) {
                 Ok(conn) => conn,
                 Err(err) => return Err(DatabaseError::ConnectDatabase { path, err }),
             };
             if let Err(err) = conn.run_pending_migrations(migrations) {
-                return Err(DatabaseError::MigrationsApply { path, migrations_dir: migrations_dir.into(), err });
+                return Err(DatabaseError::MigrationsApply { path, err });
             }
         } else {
             debug!("Database {:?} already exists", path.display());
@@ -257,6 +249,30 @@ impl<C> SQLiteDatabase<C> {
 
         // OK, now create self
         Ok(Self { path, pool, _content: PhantomData })
+    }
+
+    /// Constructor for the SQLiteDatabase that reads migrations from the given file.
+    ///
+    /// # Arguments
+    /// - `path`: The path of the database to connect to.
+    /// - `migrations_dir`: A directory with migrations to apply when creating a new database.
+    ///
+    /// # Returns
+    /// A new SQLiteDatabase struct that can be used to connect to the backend file.
+    ///
+    /// # Errors
+    /// This function may fail if we failed to setup a connection pool to the given path, or if we
+    /// failed to apply the migrations in case it's a new file.
+    pub async fn with_migrations_from_dir_async(path: impl Into<PathBuf>, migrations_dir: impl AsRef<Path>) -> Result<Self, DatabaseError> {
+        let migrations_dir: &Path = migrations_dir.as_ref();
+        debug!("Reading migrations from {:?}...", migrations_dir.display());
+        let migrations: FileBasedMigrations = match FileBasedMigrations::find_migrations_directory_in_path(migrations_dir) {
+            Ok(migrations) => migrations,
+            Err(err) => return Err(DatabaseError::MigrationsFind { migrations_dir: migrations_dir.into(), err }),
+        };
+
+        // Delegate to the normal one
+        Self::new_async(path, migrations).await
     }
 }
 impl<C: Send + Sync + DeserializeOwned + Serialize> DatabaseConnector for SQLiteDatabase<C> {
