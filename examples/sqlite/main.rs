@@ -4,7 +4,7 @@
 //  Created:
 //    24 Oct 2024, 13:55:22
 //  Last edited:
-//    28 Oct 2024, 20:48:09
+//    06 Nov 2024, 14:10:15
 //  Auto updated?
 //    Yes
 //
@@ -21,8 +21,8 @@ use policy_store::auth::no_op::NoOpResolver;
 use policy_store::databases::sqlite::SQLiteDatabase;
 use policy_store::servers::axum::AxumServer;
 use policy_store::spec::Server as _;
-use tokio::signal::unix::{SignalKind, signal};
-use tracing::{Level, debug, error, info, warn};
+use tokio::signal::unix::{signal, SignalKind};
+use tracing::{debug, error, info, warn, Level};
 
 
 /***** ARGUMENTS *****/
@@ -70,7 +70,7 @@ async fn main() {
     let auth = NoOpResolver::new();
 
     // Setup the database
-    let db: SQLiteDatabase<bool> = match SQLiteDatabase::new_async(
+    let db: SQLiteDatabase<bool> = match SQLiteDatabase::with_migrations_from_dir_async(
         &args.database,
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib").join("databases").join("sqlite").join("migrations"),
     )
