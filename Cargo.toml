@@ -70,3 +70,4 @@ databases = ["sqlite-database"]
 sqlite-database = ["dep:sqlite-database"]
 
 jwk-auth-kid = ["jwk-auth/kid"]
+sqlite-database-embedded-migrations = ["sqlite-database/embedded-migrations"]
