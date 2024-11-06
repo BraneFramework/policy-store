@@ -25,3 +25,5 @@ specifications = { path = "../../spec" }
 
 [features]
 default = []
+
+embedded-migrations = []

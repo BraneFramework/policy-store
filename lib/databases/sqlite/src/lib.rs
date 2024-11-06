@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:34
 //  Last edited:
-//    22 Oct 2024, 15:34:00
+//    06 Nov 2024, 13:58:21
 //  Auto updated?
 //    Yes
 //
@@ -14,6 +14,8 @@
 
 // Declare modules
 mod databaseconn;
+#[cfg(feature = "embedded-migrations")]
+pub mod migrations;
 mod models;
 mod schema;
 
