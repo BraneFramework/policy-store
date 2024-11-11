@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:37:53
 //  Last edited:
-//    11 Nov 2024, 11:55:49
+//    11 Nov 2024, 12:00:57
 //  Auto updated?
 //    Yes
 //
@@ -53,7 +53,10 @@ impl HttpError for KeyResolveErrorWrapper {
 pub enum ServerError {
     /// The embedded [`KeyResolver`] failed to resolve a key due to some server-side error.
     #[error("Failed to resolve key")]
-    KeyResolve { err: Box<dyn 'static + Error> },
+    KeyResolve {
+        #[source]
+        err: Box<dyn 'static + Error>,
+    },
 }
 
 /// Represents client-side errors which the server can't fix.
