@@ -4,7 +4,7 @@
 //  Created:
 //    18 Oct 2024, 17:38:33
 //  Last edited:
-//    24 Oct 2024, 16:36:28
+//    11 Nov 2024, 11:26:25
 //  Auto updated?
 //    Yes
 //
@@ -15,6 +15,8 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::future::Future;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::metadata::{AttachedMetadata, Metadata, User};
 
@@ -45,6 +47,60 @@ pub trait DatabaseConnector {
     /// # Errors
     /// This function can error if it failed to create the new connection.
     fn connect<'s>(&'s self, user: &'s User) -> impl Send + Future<Output = Result<Self::Connection<'s>, Self::Error>>;
+}
+
+// Pointer-like impls
+impl<'a, T: DatabaseConnector> DatabaseConnector for &'a T {
+    type Content = T::Content;
+    type Connection<'s>
+        = T::Connection<'s>
+    where
+        Self: 's;
+    type Error = T::Error;
+
+    #[inline]
+    fn connect<'s>(&'s self, user: &'s User) -> impl Send + Future<Output = Result<Self::Connection<'s>, Self::Error>> {
+        <T as DatabaseConnector>::connect(self, user)
+    }
+}
+impl<'a, T: DatabaseConnector> DatabaseConnector for &'a mut T {
+    type Content = T::Content;
+    type Connection<'s>
+        = T::Connection<'s>
+    where
+        Self: 's;
+    type Error = T::Error;
+
+    #[inline]
+    fn connect<'s>(&'s self, user: &'s User) -> impl Send + Future<Output = Result<Self::Connection<'s>, Self::Error>> {
+        <T as DatabaseConnector>::connect(self, user)
+    }
+}
+impl<T: DatabaseConnector> DatabaseConnector for Rc<T> {
+    type Content = T::Content;
+    type Connection<'s>
+        = T::Connection<'s>
+    where
+        T: 's;
+    type Error = T::Error;
+
+    #[inline]
+    fn connect<'s>(&'s self, user: &'s User) -> impl Send + Future<Output = Result<Self::Connection<'s>, Self::Error>> {
+        <T as DatabaseConnector>::connect(self, user)
+    }
+}
+impl<T: DatabaseConnector> DatabaseConnector for Arc<T> {
+    type Content = T::Content;
+    type Connection<'s>
+        = T::Connection<'s>
+    where
+        T: 's;
+    type Error = T::Error;
+
+    #[inline]
+    fn connect<'s>(&'s self, user: &'s User) -> impl Send + Future<Output = Result<Self::Connection<'s>, Self::Error>> {
+        <T as DatabaseConnector>::connect(self, user)
+    }
 }
 
 
@@ -137,4 +193,41 @@ pub trait DatabaseConnection {
     /// This function may error if it failed to retrieve the version from the backend database, or
     /// if that version didn't exist.
     fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Option<Self::Content>, Self::Error>>;
+}
+
+
+// Pointer-like impls
+impl<'a, T: DatabaseConnection> DatabaseConnection for &'a mut T {
+    type Content = T::Content;
+    type Error = T::Error;
+
+    #[inline]
+    fn add_version(&mut self, metadata: AttachedMetadata, content: Self::Content) -> impl Send + Future<Output = Result<u64, Self::Error>> {
+        <T as DatabaseConnection>::add_version(self, metadata, content)
+    }
+    #[inline]
+    fn activate(&mut self, version: u64) -> impl Send + Future<Output = Result<(), Self::Error>> {
+        <T as DatabaseConnection>::activate(self, version)
+    }
+    #[inline]
+    fn deactivate(&mut self) -> impl Send + Future<Output = Result<(), Self::Error>> { <T as DatabaseConnection>::deactivate(self) }
+
+    #[inline]
+    fn get_versions(&mut self) -> impl Send + Future<Output = Result<HashMap<u64, Metadata>, Self::Error>> {
+        <T as DatabaseConnection>::get_versions(self)
+    }
+    #[inline]
+    fn get_active_version(&mut self) -> impl Send + Future<Output = Result<Option<u64>, Self::Error>> {
+        <T as DatabaseConnection>::get_active_version(self)
+    }
+    #[inline]
+    fn get_activator(&mut self) -> impl Send + Future<Output = Result<Option<User>, Self::Error>> { <T as DatabaseConnection>::get_activator(self) }
+    #[inline]
+    fn get_version_metadata(&mut self, version: u64) -> impl Send + Future<Output = Result<Option<Metadata>, Self::Error>> {
+        <T as DatabaseConnection>::get_version_metadata(self, version)
+    }
+    #[inline]
+    fn get_version_content(&mut self, version: u64) -> impl Send + Future<Output = Result<Option<Self::Content>, Self::Error>> {
+        <T as DatabaseConnection>::get_version_content(self, version)
+    }
 }
