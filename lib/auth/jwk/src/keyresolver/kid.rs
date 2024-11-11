@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:16:54
 //  Last edited:
-//    11 Nov 2024, 11:56:00
+//    11 Nov 2024, 12:05:01
 //  Auto updated?
 //    Yes
 //
@@ -34,13 +34,25 @@ use crate::KeyResolveErrorWrapper;
 pub enum ServerError {
     /// Failed to deserialize the keystore file.
     #[error("Failed to deserialize keystore file {:?}", path.display())]
-    FileDeserialize { path: PathBuf, err: serde_json::Error },
+    FileDeserialize {
+        path: PathBuf,
+        #[source]
+        err:  serde_json::Error,
+    },
     /// Failed to read the keystore to memory.
     #[error("Failed to read keystore file {:?}", path.display())]
-    FileRead { path: PathBuf, err: std::io::Error },
+    FileRead {
+        path: PathBuf,
+        #[source]
+        err:  std::io::Error,
+    },
     /// The given key was not valid Base64
     #[error("Given key {kid:?} was not valid Base64")]
-    KeyDecodeBase64 { kid: String, err: base64ct::Error },
+    KeyDecodeBase64 {
+        kid: String,
+        #[source]
+        err: base64ct::Error,
+    },
     /// The given key was in an unsupported format
     #[error("Given key {kid:?} has an unsupported format (only octet keys are supported)")]
     KeyTypeUnsupprted { kid: String },
