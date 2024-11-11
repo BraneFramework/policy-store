@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:37:53
 //  Last edited:
-//    04 Nov 2024, 15:26:50
+//    11 Nov 2024, 11:55:49
 //  Auto updated?
 //    Yes
 //
@@ -14,21 +14,40 @@
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::{Display, Formatter, Result as FResult};
 use std::future::Future;
 
 use http::header::AUTHORIZATION;
 use http::{HeaderMap, HeaderValue, StatusCode};
 use jsonwebtoken::{Header, Validation};
+use specifications::AuthResolver;
 use specifications::authresolver::HttpError;
 use specifications::metadata::User;
-use specifications::AuthResolver;
 use thiserror::Error;
-use tracing::{debug, info, span, Level};
+use tracing::{Level, debug, info, span};
 
 use crate::keyresolver::KeyResolver;
 
 
 /***** ERRORS *****/
+/// Lil' manual thing for making sure `Box<dyn HttpError>` can be [sourced](Error::source()).
+#[derive(Debug)]
+pub struct KeyResolveErrorWrapper(pub Box<dyn 'static + HttpError>);
+impl Display for KeyResolveErrorWrapper {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult { self.0.fmt(f) }
+}
+impl Error for KeyResolveErrorWrapper {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> { self.0.source() }
+}
+impl HttpError for KeyResolveErrorWrapper {
+    #[inline]
+    fn status_code(&self) -> StatusCode { self.0.status_code() }
+}
+
+
+
 /// Represents server-side errors which the client can't fix.
 #[derive(Debug, Error)]
 pub enum ServerError {
@@ -73,7 +92,10 @@ pub enum ClientError {
     },
     /// The embedded [`KeyResolver`] failed to resolve a key due to some client-side error.
     #[error("Failed to resolve key")]
-    KeyResolve { err: Box<dyn 'static + HttpError> },
+    KeyResolve {
+        #[source]
+        err: KeyResolveErrorWrapper,
+    },
     /// The given 'Authorization'-header was missing the 'Bearer '-part.
     #[error("Missing \"Bearer \" in header {header:?} in request (raw value: {raw:?})")]
     MissingBearer { header: &'static str, raw: String },

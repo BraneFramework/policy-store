@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:16:54
 //  Last edited:
-//    04 Nov 2024, 15:26:40
+//    11 Nov 2024, 11:56:00
 //  Auto updated?
 //    Yes
 //
@@ -22,9 +22,10 @@ use jsonwebtoken::jwk::{AlgorithmParameters, Jwk, JwkSet};
 use jsonwebtoken::{DecodingKey, Header};
 use specifications::authresolver::HttpError;
 use thiserror::Error;
-use tracing::{debug, span, Level};
+use tracing::{Level, debug, span};
 
 use super::KeyResolver;
+use crate::KeyResolveErrorWrapper;
 
 
 /***** ERRORS *****/
@@ -72,7 +73,7 @@ impl HttpError for ClientError {
 }
 impl From<ClientError> for crate::authresolver::ClientError {
     #[inline]
-    fn from(value: ClientError) -> Self { Self::KeyResolve { err: Box::new(value) } }
+    fn from(value: ClientError) -> Self { Self::KeyResolve { err: KeyResolveErrorWrapper(Box::new(value)) } }
 }
 
 
