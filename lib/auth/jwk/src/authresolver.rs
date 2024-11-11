@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:37:53
 //  Last edited:
-//    11 Nov 2024, 12:00:57
+//    11 Nov 2024, 12:24:50
 //  Auto updated?
 //    Yes
 //
@@ -13,6 +13,7 @@
 //
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::future::Future;
@@ -57,6 +58,11 @@ pub enum ServerError {
         #[source]
         err: Box<dyn 'static + Error>,
     },
+}
+// Allows key resolvers to use 'Infallible' as error type
+impl From<Infallible> for ServerError {
+    #[inline]
+    fn from(_value: Infallible) -> Self { unreachable!() }
 }
 
 /// Represents client-side errors which the server can't fix.
@@ -118,6 +124,11 @@ impl HttpError for ClientError {
             KeyResolve { err } => err.status_code(),
         }
     }
+}
+// Allows key resolvers to use 'Infallible' as error type
+impl From<Infallible> for ClientError {
+    #[inline]
+    fn from(_value: Infallible) -> Self { unreachable!() }
 }
 
 

@@ -36,6 +36,11 @@ name = "sqlite"
 path = "examples/sqlite/main.rs"
 required-features = ["axum-server", "no-op-auth", "sqlite-database"]
 
+[[example]]
+name = "jwk"
+path = "examples/jwk/main.rs"
+required-features = ["axum-server", "jwk-auth", "jwk-auth-kid", "sqlite-database"]
+
 
 [dependencies]
 axum-server = { path = "lib/servers/axum", optional = true }

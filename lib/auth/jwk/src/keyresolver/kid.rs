@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:16:54
 //  Last edited:
-//    11 Nov 2024, 12:05:01
+//    11 Nov 2024, 12:30:00
 //  Auto updated?
 //    Yes
 //
@@ -12,17 +12,19 @@
 //!   Implements a KID resolver.
 //
 
+use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use base64ct::Encoding as _;
 use http::StatusCode;
-use jsonwebtoken::jwk::{AlgorithmParameters, Jwk, JwkSet};
+use jsonwebtoken::jwk::{AlgorithmParameters, JwkSet};
 use jsonwebtoken::{DecodingKey, Header};
 use specifications::authresolver::HttpError;
 use thiserror::Error;
-use tracing::{Level, debug, span};
+use tracing::{Level, debug, span, warn};
 
 use super::KeyResolver;
 use crate::KeyResolveErrorWrapper;
@@ -47,15 +49,16 @@ pub enum ServerError {
         err:  std::io::Error,
     },
     /// The given key was not valid Base64
-    #[error("Given key {kid:?} was not valid Base64")]
+    #[error("Given key {kid:?} in store file {:?} was not valid Base64", path.display())]
     KeyDecodeBase64 {
-        kid: String,
+        path: PathBuf,
+        kid:  String,
         #[source]
-        err: base64ct::Error,
+        err:  base64ct::Error,
     },
     /// The given key was in an unsupported format
-    #[error("Given key {kid:?} has an unsupported format (only octet keys are supported)")]
-    KeyTypeUnsupprted { kid: String },
+    #[error("Given key {kid:?} in store file {:?} has an unsupported format (only octet keys are supported)", path.display())]
+    KeyTypeUnsupprted { path: PathBuf, kid: String },
 }
 impl From<ServerError> for crate::authresolver::ServerError {
     #[inline]
@@ -94,9 +97,9 @@ impl From<ClientError> for crate::authresolver::ClientError {
 
 /***** LIBRARY *****/
 /// Resolves keys for the JWT by ID.
-#[derive(Debug)]
 pub struct KidResolver {
-    jwk_store: JwkSet,
+    /// Maps key IDs to keys
+    store: HashMap<String, DecodingKey>,
 }
 impl KidResolver {
     /// Constructor for the KidResolver.
@@ -111,16 +114,47 @@ impl KidResolver {
     /// This function can fail if it failed to read the file (e.g., it does not exist) or if it
     /// wasn't parsable as a JSON key set.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, ServerError> {
+        let _span = span!(Level::INFO, "KidResolver::new");
+
+        // Read the contents of the file
         let path: &Path = path.as_ref();
         let r = fs::read_to_string(path).map_err(|err| ServerError::FileRead { path: path.into(), err })?;
         let keyfile: JwkSet = serde_json::from_str(&r).map_err(|err| ServerError::FileDeserialize { path: path.into(), err })?;
 
-        Ok(Self { jwk_store: keyfile })
+        // Parse the keys as we go
+        let mut store = HashMap::with_capacity(keyfile.keys.len());
+        for (i, key) in keyfile.keys.into_iter().enumerate() {
+            if let Some(id) = key.common.key_id {
+                debug!("Key {:?}: {:?}", id, key.algorithm);
+
+                // Get the encoded binary value
+                let mut secret: [u8; 32] = [0; 32];
+                if let AlgorithmParameters::OctetKey(oct) = &key.algorithm {
+                    match base64ct::Base64Url::decode(&oct.value, &mut secret) {
+                        Ok(val) => val,
+                        Err(err) => return Err(ServerError::KeyDecodeBase64 { path: path.into(), kid: id, err }),
+                    }
+                } else {
+                    return Err(ServerError::KeyTypeUnsupprted { path: path.into(), kid: id });
+                };
+
+                // Store it now
+                if store.insert(id.clone(), DecodingKey::from_secret(&secret)).is_some() {
+                    warn!("Found duplicate key with ID {id:?}");
+                }
+            } else {
+                warn!("Skipping key {} in keyfile '{}' because it has no ID", i, path.display());
+            }
+        }
+        debug!("Loaded {} key(s)", store.len());
+
+        // Done
+        Ok(Self { store })
     }
 }
 impl KeyResolver for KidResolver {
     type ClientError = ClientError;
-    type ServerError = ServerError;
+    type ServerError = Infallible;
 
 
     fn resolve_key(&self, header: &Header) -> impl Send + Sync + Future<Output = Result<Result<DecodingKey, Self::ClientError>, Self::ServerError>> {
@@ -134,26 +168,13 @@ impl KeyResolver for KidResolver {
             };
 
             // Get the key
-            debug!("Finding key with ID {kid:?}...");
-            let key: &Jwk = match self.jwk_store.find(kid) {
-                Some(key) => key,
-                None => return Ok(Err(ClientError::UnknownKeyId { kid: kid.into() })),
-            };
-            debug!("Key ID {kid:?}: {:?}", key.algorithm);
-
-            // Extract the secret from it
-            let mut secret: Vec<u8> = Vec::new();
-            if let AlgorithmParameters::OctetKey(oct) = &key.algorithm {
-                match base64ct::Base64Url::decode(&oct.value, &mut secret) {
-                    Ok(val) => val,
-                    Err(err) => return Err(ServerError::KeyDecodeBase64 { kid: kid.into(), err }),
-                }
-            } else {
-                return Err(ServerError::KeyTypeUnsupprted { kid: kid.into() });
-            };
-
-            // Now return that as decoding key
-            Ok(Ok(DecodingKey::from_secret(&secret)))
+            match self.store.get(kid) {
+                Some(key) => {
+                    debug!("Resolved key with ID {kid:?}");
+                    Ok(Ok(key.clone()))
+                },
+                None => Ok(Err(ClientError::UnknownKeyId { kid: kid.into() })),
+            }
         }
     }
 }
