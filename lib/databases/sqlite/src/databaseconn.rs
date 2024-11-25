@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    06 Nov 2024, 14:09:58
+//    25 Nov 2024, 10:52:33
 //  Auto updated?
 //    Yes
 //
@@ -24,14 +24,14 @@ use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::sqlite::Sqlite;
 use diesel::{Connection as _, ExpressionMethods as _, QueryDsl as _, RunQueryDsl as _, SelectableHelper as _, SqliteConnection};
 use diesel_migrations::{FileBasedMigrations, MigrationHarness as _};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
+use specifications::DatabaseConnector;
 use specifications::databaseconn::DatabaseConnection;
 use specifications::metadata::{AttachedMetadata, Metadata, User};
-use specifications::DatabaseConnector;
 use thiserror::Error;
 use tokio::fs;
-use tracing::{debug, info, span, Level};
+use tracing::{Level, debug, info, span};
 
 use crate::models::{SqliteActiveVersion, SqlitePolicy};
 
@@ -276,7 +276,10 @@ impl<C> SQLiteDatabase<C> {
     }
 }
 impl<C: Send + Sync + DeserializeOwned + Serialize> DatabaseConnector for SQLiteDatabase<C> {
-    type Connection<'s> = SQLiteConnection<'s, C> where Self: 's;
+    type Connection<'s>
+        = SQLiteConnection<'s, C>
+    where
+        Self: 's;
     type Content = C;
     type Error = DatabaseError;
 
@@ -474,14 +477,14 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
             debug!("Retrieving all policy versions...");
             match policy::policies
                 .order_by(crate::schema::policies::dsl::created_at.desc())
-                .select((policy::description, policy::name, policy::version, policy::creator, policy::created_at))
-                .load::<(String, String, i64, String, NaiveDateTime)>(&mut self.conn)
+                .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
+                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut self.conn)
             {
                 Ok(r) => Ok(r
                     .into_iter()
-                    .map(|(description, name, version, creator, created_at)| {
+                    .map(|(description, name, language, version, creator, created_at)| {
                         (version as u64, Metadata {
-                            attached: AttachedMetadata { name, description },
+                            attached: AttachedMetadata { name, description, language },
                             version:  version as u64,
                             creator:  User { id: creator, name: "John Smith".into() },
                             created:  created_at.and_utc(),
@@ -542,19 +545,19 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                 .limit(1)
                 .filter(crate::schema::policies::dsl::version.eq(version as i64))
                 .order_by(crate::schema::policies::dsl::created_at.desc())
-                .select((policy::description, policy::name, policy::version, policy::creator, policy::created_at))
-                .load::<(String, String, i64, String, NaiveDateTime)>(&mut self.conn)
+                .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
+                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut self.conn)
             {
                 Ok(mut r) => {
                     // Extract the version itself
                     if r.len() < 1 {
                         return Ok(None);
                     }
-                    let (description, name, version, creator, created_at) = r.remove(0);
+                    let (description, name, language, version, creator, created_at) = r.remove(0);
 
                     // Done, return the thing
                     Ok(Some(Metadata {
-                        attached: AttachedMetadata { name, description },
+                        attached: AttachedMetadata { name, description, language },
                         created:  created_at.and_utc(),
                         creator:  User { id: creator, name: "John Smith".into() },
                         version:  version as u64,

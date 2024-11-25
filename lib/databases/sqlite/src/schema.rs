@@ -18,6 +18,7 @@ diesel::table! {
         creator -> Text,
         created_at -> Timestamp,
         content -> Text,
+        language -> Text,
     }
 }
 

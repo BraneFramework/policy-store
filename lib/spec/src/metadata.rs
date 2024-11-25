@@ -4,7 +4,7 @@
 //  Created:
 //    18 Oct 2024, 17:50:16
 //  Last edited:
-//    23 Oct 2024, 14:57:25
+//    25 Nov 2024, 10:46:35
 //  Auto updated?
 //    Yes
 //
@@ -36,6 +36,9 @@ pub struct AttachedMetadata {
     pub name: String,
     /// Some description of the policy for recognition.
     pub description: String,
+    /// A description of the policy language that the snippet is written in. Reasoners may decide
+    /// to accept or deny the policy based on this identifier.
+    pub language: String,
 }
 
 /// Metadata associated with a policy snippet.
