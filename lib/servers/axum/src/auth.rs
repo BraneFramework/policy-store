@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:58:43
 //  Last edited:
-//    04 Nov 2024, 15:27:01
+//    02 Dec 2024, 15:17:13
 //  Auto updated?
 //    Yes
 //
@@ -60,12 +60,7 @@ where
     A::ClientError: 'static,
     A::ServerError: 'static,
 {
-    pub(crate) async fn check(
-        State(context): State<Arc<Self>>,
-        ConnectInfo(client): ConnectInfo<SocketAddr>,
-        mut request: Request,
-        next: Next,
-    ) -> Response {
+    pub async fn check(State(context): State<Arc<Self>>, ConnectInfo(client): ConnectInfo<SocketAddr>, mut request: Request, next: Next) -> Response {
         let _span = span!(Level::INFO, "AxumServer::check", client = client.to_string());
 
         // Do the auth thingy

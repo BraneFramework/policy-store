@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:56:03
 //  Last edited:
-//    24 Oct 2024, 16:41:53
+//    02 Dec 2024, 15:16:58
 //  Auto updated?
 //    Yes
 //
@@ -110,7 +110,7 @@ where
     /// - 200 OK with an [`AddVersionResponse`] detailling the version number of the new policy;
     /// - 404 BAD REQUEST with the reason why we failed to parse the request; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn add_version(
+    pub fn add_version(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         request: Request,
@@ -157,7 +157,7 @@ where
     /// - 200 OK;
     /// - 404 BAD REQUEST with the reason why we failed to parse the request; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn activate(
+    pub fn activate(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         request: Request,
@@ -196,7 +196,7 @@ where
     /// Out:
     /// - 200 OK; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn deactivate(
+    pub fn deactivate(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
     ) -> impl 'static + Send + Future<Output = (StatusCode, String)> {
@@ -231,7 +231,7 @@ where
     /// - 200 OK with an [`GetVersionsResponse`] mapping version numbers ([`u64`]) to [`Metadata`];
     ///   or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn get_versions(
+    pub fn get_versions(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
     ) -> impl 'static + Send + Future<Output = (StatusCode, String)> {
@@ -273,7 +273,7 @@ where
     /// Out:
     /// - 200 OK with a [`GetActiveVersionResponse`] describing the version; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn get_active_version(
+    pub fn get_active_version(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
     ) -> impl 'static + Send + Future<Output = (StatusCode, String)> {
@@ -315,7 +315,7 @@ where
     /// Out:
     /// - 200 OK with a [`GetActivatorResponse`] describing the version; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn get_activator(
+    pub fn get_activator(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
     ) -> impl 'static + Send + Future<Output = (StatusCode, String)> {
@@ -358,7 +358,7 @@ where
     /// - 200 OK with a [`GetVersionMetadataResponse`] describing the version's metadata;
     /// - 404 NOT FOUND if there was no policy with version `:version`; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn get_version_metadata(
+    pub fn get_version_metadata(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         Path(version): Path<u64>,
@@ -406,7 +406,7 @@ where
     ///   describing the version's content;
     /// - 404 NOT FOUND if there was no policy with version `:version`; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
-    pub(crate) fn get_version_content(
+    pub fn get_version_content(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         Path(version): Path<u64>,
