@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:28:29
 //  Last edited:
-//    28 Oct 2024, 20:46:11
+//    02 Dec 2024, 15:14:11
 //  Auto updated?
 //    Yes
 //
@@ -16,22 +16,22 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::Router;
 use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 use axum::routing::{delete, get, post, put};
+use axum::Router;
 use error_trace::trace;
-use hyper::Request;
 use hyper::body::Incoming;
+use hyper::Request;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder as HyperBuilder;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use specifications::{AuthResolver, DatabaseConnector, Server};
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tower_service::Service as _;
 use tracing::field::Empty;
-use tracing::{Level, debug, error, info, span};
+use tracing::{debug, error, info, span, Level};
 
 
 /***** ERRORS *****/
@@ -74,7 +74,7 @@ impl<A, D> AxumServer<A, D> {
     #[inline]
     pub fn new(addr: impl Into<SocketAddr>, auth: A, data: D) -> Self { Self { addr: addr.into(), auth, data } }
 }
-impl<A, D> Server for AxumServer<A, D>
+impl<A, D> AxumServer<A, D>
 where
     A: 'static + Send + Sync + AuthResolver,
     A::Context: 'static + Send + Sync + Clone,
@@ -84,57 +84,77 @@ where
     D::Content: Send + DeserializeOwned + Serialize,
     for<'s> D::Connection<'s>: Send,
 {
-    type Error = Error;
+    /// Builds an [`axum`] [`Router`] that encodes the paths of this server.
+    ///
+    /// # Arguments
+    /// - `this`: Is like `self`, but then wrapped in an [`Arc`].
+    ///
+    /// # Returns
+    /// A [`Router`] that can be extended with additional paths, if preferred.
+    pub fn routes(this: Arc<Self>) -> Router<()> {
+        let _span = span!(Level::INFO, "AxumServer::routes");
 
-    fn serve(self) -> impl Future<Output = Result<(), Self::Error>> {
-        let this: Arc<Self> = Arc::new(self);
+        // First, define the axum paths
+        debug!("Building axum paths...");
+        let add_version: Router = Router::new()
+            .route("/policies", post(Self::add_version))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        let activate: Router = Router::new()
+            .route("/policies/active", put(Self::activate))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        let deactivate: Router = Router::new()
+            .route("/policies/active", delete(Self::deactivate))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        let get_versions: Router = Router::new()
+            .route("/policies", get(Self::get_versions))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        let get_active_version: Router = Router::new()
+            .route("/policies/active", get(Self::get_active_version))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        let get_activator: Router = Router::new()
+            .route("/policies/active/activator", get(Self::get_activator))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        let get_version_metadata: Router = Router::new()
+            .route("/policies/:version", get(Self::get_version_metadata))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        let get_version_content: Router = Router::new()
+            .route("/policies/:version/content", get(Self::get_version_content))
+            .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
+            .with_state(this.clone());
+        Router::<()>::new()
+            .nest("/v2/", add_version)
+            .nest("/v2/", activate)
+            .nest("/v2/", deactivate)
+            .nest("/v2/", get_versions)
+            .nest("/v2/", get_active_version)
+            .nest("/v2/", get_activator)
+            .nest("/v2/", get_version_metadata)
+            .nest("/v2/", get_version_content)
+    }
+}
+impl<A, D> AxumServer<A, D> {
+    /// Runs the given [`axum`] [`Router`].
+    ///
+    /// # Arguments
+    /// - `this`: Is like `self`, but then wrapped in an [`Arc`].
+    /// - `router`: The [`Router`] to run.
+    ///
+    /// # Returns
+    /// This function does not return for as long as the server runs.
+    ///
+    /// # Errors
+    /// This function may fail if it failed to bind the server at the internal address.
+    pub fn serve_router(this: Arc<Self>, router: Router<()>) -> impl Future<Output = Result<(), Error>> {
         async move {
-            let span = span!(Level::INFO, "AxumServer::serve", state = "starting", client = Empty);
-
-            // First, define the axum paths
-            debug!("Building axum paths...");
-            let add_version: Router = Router::new()
-                .route("/policies", post(Self::add_version))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let activate: Router = Router::new()
-                .route("/policies/active", put(Self::activate))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let deactivate: Router = Router::new()
-                .route("/policies/active", delete(Self::deactivate))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let get_versions: Router = Router::new()
-                .route("/policies", get(Self::get_versions))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let get_active_version: Router = Router::new()
-                .route("/policies/active", get(Self::get_active_version))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let get_activator: Router = Router::new()
-                .route("/policies/active/activator", get(Self::get_activator))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let get_version_metadata: Router = Router::new()
-                .route("/policies/:version", get(Self::get_version_metadata))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let get_version_content: Router = Router::new()
-                .route("/policies/:version/content", get(Self::get_version_content))
-                .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
-                .with_state(this.clone());
-            let router: IntoMakeServiceWithConnectInfo<Router, SocketAddr> = Router::new()
-                .nest("/v2/", add_version)
-                .nest("/v2/", activate)
-                .nest("/v2/", deactivate)
-                .nest("/v2/", get_versions)
-                .nest("/v2/", get_active_version)
-                .nest("/v2/", get_activator)
-                .nest("/v2/", get_version_metadata)
-                .nest("/v2/", get_version_content)
-                .into_make_service_with_connect_info();
+            let span = span!(Level::INFO, "AxumServer::serve_router", state = "starting", client = Empty);
+            let router: IntoMakeServiceWithConnectInfo<Router, SocketAddr> = Router::<()>::into_make_service_with_connect_info(router);
 
             // Bind the TCP Listener
             debug!("Binding server on '{}'...", this.addr);
@@ -179,6 +199,29 @@ where
                     }
                 });
             }
+        }
+    }
+}
+impl<A, D> Server for AxumServer<A, D>
+where
+    A: 'static + Send + Sync + AuthResolver,
+    A::Context: 'static + Send + Sync + Clone,
+    A::ClientError: 'static,
+    A::ServerError: 'static,
+    D: 'static + Send + Sync + DatabaseConnector,
+    D::Content: Send + DeserializeOwned + Serialize,
+    for<'s> D::Connection<'s>: Send,
+{
+    type Error = Error;
+
+    fn serve(self) -> impl Future<Output = Result<(), Self::Error>> {
+        let this: Arc<Self> = Arc::new(self);
+        async move {
+            let _span = span!(Level::INFO, "AxumServer::serve");
+
+            // Simply depend on the two halves of the equation
+            let router: Router<()> = Self::routes(this.clone());
+            Self::serve_router(this, router).await
         }
     }
 }
