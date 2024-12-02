@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:56:03
 //  Last edited:
-//    02 Dec 2024, 15:16:58
+//    02 Dec 2024, 16:53:10
 //  Auto updated?
 //    Yes
 //
@@ -31,8 +31,8 @@ use tracing::{error, info, span, Level};
 
 use crate::server::AxumServer;
 use crate::spec::{
-    AddVersionRequest, AddVersionResponse, GetActivatorResponse, GetActiveVersionResponse, GetVersionContentResponse, GetVersionMetadataResponse,
-    GetVersionsResponse,
+    ActivateRequest, AddVersionRequest, AddVersionResponse, GetActivatorResponse, GetActiveVersionResponse, GetVersionContentResponse,
+    GetVersionMetadataResponse, GetVersionsResponse,
 };
 
 
@@ -166,7 +166,7 @@ where
             let _span = span!(Level::INFO, "AxumServer::activate", user = auth.id);
 
             // Get the request
-            let version: u64 = match download_request(request).await {
+            let version: ActivateRequest = match download_request(request).await {
                 Ok(req) => req,
                 Err(res) => return res,
             };
@@ -175,7 +175,7 @@ where
             let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    let msg: String = format!("Failed to activate policy {version}");
+                    let msg: String = format!("Failed to activate policy {}", version.version);
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },

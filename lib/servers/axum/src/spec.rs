@@ -4,7 +4,7 @@
 //  Created:
 //    24 Oct 2024, 12:05:52
 //  Last edited:
-//    24 Oct 2024, 16:41:13
+//    02 Dec 2024, 16:53:17
 //  Auto updated?
 //    Yes
 //
@@ -30,9 +30,19 @@ pub struct AddVersionRequest<C> {
 }
 
 /// Replied when [adding](crate::server::AxumServer::add_version()) a new version.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct AddVersionResponse {
     /// The newly assigned ID of the version.
+    pub version: u64,
+}
+
+
+
+/// What to send in the body of a request when [activating](crate::server::AxumServer::activate())
+/// a version.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct ActivateRequest {
+    /// The version to activate.
     pub version: u64,
 }
 
@@ -48,7 +58,7 @@ pub struct GetVersionsResponse {
 
 
 /// Replied when [retrieving the active policy](crate::server::AxumServer::get_active_version()).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct GetActiveVersionResponse {
     /// The version of the active policy, if any.
     pub version: Option<u64>,
