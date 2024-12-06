@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 11:56:03
 //  Last edited:
-//    02 Dec 2024, 16:53:10
+//    06 Dec 2024, 14:38:58
 //  Auto updated?
 //    Yes
 //
@@ -16,18 +16,18 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
+use axum::Extension;
 use axum::body::Bytes;
 use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
-use axum::Extension;
 use error_trace::trace;
 use futures::StreamExt;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
+use specifications::DatabaseConnector;
 use specifications::databaseconn::DatabaseConnection;
 use specifications::metadata::{Metadata, User};
-use specifications::DatabaseConnector;
-use tracing::{error, info, span, Level};
+use tracing::{Level, error, info, span};
 
 use crate::server::AxumServer;
 use crate::spec::{
@@ -151,7 +151,7 @@ where
     /// Handler for `PUT /v2/policies/active` (i.e., activating a policy).
     ///
     /// In:
-    /// - An unsigned 64-bit integer representing the policy to activate.
+    /// - A [`ActivateRequest`] encoding the policy to activate.
     ///
     /// Out:
     /// - 200 OK;
@@ -180,8 +180,8 @@ where
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
             };
-            if let Err(err) = conn.activate(version).await {
-                let msg: String = format!("Failed to activate policy {version}");
+            if let Err(err) = conn.activate(version.version).await {
+                let msg: String = format!("Failed to activate policy {}", version.version);
                 error!("{}", trace!(("{msg}"), err));
                 return (StatusCode::INTERNAL_SERVER_ERROR, msg);
             };
