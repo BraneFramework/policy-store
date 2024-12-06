@@ -4,7 +4,7 @@
 //  Created:
 //    06 Dec 2024, 17:59:58
 //  Last edited:
-//    06 Dec 2024, 18:06:40
+//    06 Dec 2024, 18:32:22
 //  Auto updated?
 //    Yes
 //
@@ -56,7 +56,7 @@ impl EndpointPath {
     /// # Returns
     /// A new [`MethodRouter`] that encodes to axum when to call the given `handler`.
     #[cfg(feature = "axum")]
-    pub fn method<H, T, S>(&self, handler: H) -> MethodRouter<S, Infallible>
+    pub fn handler<H, T, S>(&self, handler: H) -> MethodRouter<S, Infallible>
     where
         H: Handler<T, S>,
         T: 'static,
@@ -70,16 +70,6 @@ impl EndpointPath {
             _ => unimplemented!(),
         }
     }
-
-    /// Returns a string that builds the path where this route may be found.
-    ///
-    /// Note that, if there are any parameters in it, these are returned as-is. Therefore, this
-    /// function tends to be used when defining the API.
-    ///
-    /// # Returns
-    /// A [`str`] that encodes the location of this endpoint.
-    #[inline]
-    pub fn definition(&self) -> &'static str { self.path }
 
     /// Returns a string that find the path where this route may be found.
     ///
@@ -95,7 +85,7 @@ impl EndpointPath {
     /// - the number of arguments given does not match the number of arguments in the path.
     #[inline]
     #[track_caller]
-    pub fn instantiated<S: ToString>(&self, args: impl IntoIterator<Item = S>) -> Cow<'static, str> {
+    pub fn instantiated_path<S: ToString>(&self, args: impl IntoIterator<Item = S>) -> Cow<'static, str> {
         let mut args = args.into_iter();
         if !self.path.contains("/:") {
             // Ensure there aren't any arguments

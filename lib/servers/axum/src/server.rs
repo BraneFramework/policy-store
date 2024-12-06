@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:28:29
 //  Last edited:
-//    06 Dec 2024, 17:51:17
+//    06 Dec 2024, 18:32:03
 //  Auto updated?
 //    Yes
 //
@@ -101,35 +101,35 @@ where
         // First, define the axum paths
         debug!("Building axum paths...");
         let add_version: Router = Router::new()
-            .route(ADD_VERSION_PATH.path, ADD_VERSION_PATH.method(Self::add_version))
+            .route(ADD_VERSION_PATH.path, ADD_VERSION_PATH.handler(Self::add_version))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let activate: Router = Router::new()
-            .route(ACTIVATE_PATH.path, ACTIVATE_PATH.method(Self::activate))
+            .route(ACTIVATE_PATH.path, ACTIVATE_PATH.handler(Self::activate))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let deactivate: Router = Router::new()
-            .route(DEACTIVATE_PATH.path, DEACTIVATE_PATH.method(Self::deactivate))
+            .route(DEACTIVATE_PATH.path, DEACTIVATE_PATH.handler(Self::deactivate))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_versions: Router = Router::new()
-            .route(GET_VERSIONS_PATH.path, GET_VERSIONS_PATH.method(Self::get_versions))
+            .route(GET_VERSIONS_PATH.path, GET_VERSIONS_PATH.handler(Self::get_versions))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_active_version: Router = Router::new()
-            .route(GET_ACTIVE_VERSION_PATH.path, GET_ACTIVE_VERSION_PATH.method(Self::get_active_version))
+            .route(GET_ACTIVE_VERSION_PATH.path, GET_ACTIVE_VERSION_PATH.handler(Self::get_active_version))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_activator: Router = Router::new()
-            .route(GET_ACTIVATOR_VERSION_PATH.path, GET_ACTIVATOR_VERSION_PATH.method(Self::get_activator))
+            .route(GET_ACTIVATOR_VERSION_PATH.path, GET_ACTIVATOR_VERSION_PATH.handler(Self::get_activator))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_version_metadata: Router = Router::new()
-            .route(GET_VERSION_METADATA_PATH.path, GET_VERSION_METADATA_PATH.method(Self::get_version_metadata))
+            .route(GET_VERSION_METADATA_PATH.path, GET_VERSION_METADATA_PATH.handler(Self::get_version_metadata))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_version_content: Router = Router::new()
-            .route(GET_VERSION_CONTENT_PATH.path, GET_VERSION_CONTENT_PATH.method(Self::get_version_content))
+            .route(GET_VERSION_CONTENT_PATH.path, GET_VERSION_CONTENT_PATH.handler(Self::get_version_content))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         Router::<()>::new()
