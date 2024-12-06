@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:28:29
 //  Last edited:
-//    02 Dec 2024, 15:14:11
+//    06 Dec 2024, 17:51:17
 //  Auto updated?
 //    Yes
 //
@@ -16,22 +16,26 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
-use axum::routing::{delete, get, post, put};
 use axum::Router;
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 use error_trace::trace;
-use hyper::body::Incoming;
 use hyper::Request;
+use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder as HyperBuilder;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use specifications::{AuthResolver, DatabaseConnector, Server};
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tower_service::Service as _;
 use tracing::field::Empty;
-use tracing::{debug, error, info, span, Level};
+use tracing::{Level, debug, error, info, span};
+
+use crate::spec::{
+    ACTIVATE_PATH, ADD_VERSION_PATH, DEACTIVATE_PATH, GET_ACTIVATOR_VERSION_PATH, GET_ACTIVE_VERSION_PATH, GET_VERSION_CONTENT_PATH,
+    GET_VERSION_METADATA_PATH, GET_VERSIONS_PATH,
+};
 
 
 /***** ERRORS *****/
@@ -97,46 +101,46 @@ where
         // First, define the axum paths
         debug!("Building axum paths...");
         let add_version: Router = Router::new()
-            .route("/policies", post(Self::add_version))
+            .route(ADD_VERSION_PATH.path, ADD_VERSION_PATH.method(Self::add_version))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let activate: Router = Router::new()
-            .route("/policies/active", put(Self::activate))
+            .route(ACTIVATE_PATH.path, ACTIVATE_PATH.method(Self::activate))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let deactivate: Router = Router::new()
-            .route("/policies/active", delete(Self::deactivate))
+            .route(DEACTIVATE_PATH.path, DEACTIVATE_PATH.method(Self::deactivate))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_versions: Router = Router::new()
-            .route("/policies", get(Self::get_versions))
+            .route(GET_VERSIONS_PATH.path, GET_VERSIONS_PATH.method(Self::get_versions))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_active_version: Router = Router::new()
-            .route("/policies/active", get(Self::get_active_version))
+            .route(GET_ACTIVE_VERSION_PATH.path, GET_ACTIVE_VERSION_PATH.method(Self::get_active_version))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_activator: Router = Router::new()
-            .route("/policies/active/activator", get(Self::get_activator))
+            .route(GET_ACTIVATOR_VERSION_PATH.path, GET_ACTIVATOR_VERSION_PATH.method(Self::get_activator))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_version_metadata: Router = Router::new()
-            .route("/policies/:version", get(Self::get_version_metadata))
+            .route(GET_VERSION_METADATA_PATH.path, GET_VERSION_METADATA_PATH.method(Self::get_version_metadata))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         let get_version_content: Router = Router::new()
-            .route("/policies/:version/content", get(Self::get_version_content))
+            .route(GET_VERSION_CONTENT_PATH.path, GET_VERSION_CONTENT_PATH.method(Self::get_version_content))
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         Router::<()>::new()
-            .nest("/v2/", add_version)
-            .nest("/v2/", activate)
-            .nest("/v2/", deactivate)
-            .nest("/v2/", get_versions)
-            .nest("/v2/", get_active_version)
-            .nest("/v2/", get_activator)
-            .nest("/v2/", get_version_metadata)
-            .nest("/v2/", get_version_content)
+            .nest("", add_version)
+            .nest("", activate)
+            .nest("", deactivate)
+            .nest("", get_versions)
+            .nest("", get_active_version)
+            .nest("", get_activator)
+            .nest("", get_version_metadata)
+            .nest("", get_version_content)
     }
 }
 impl<A, D> AxumServer<A, D> {
