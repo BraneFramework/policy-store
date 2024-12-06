@@ -4,7 +4,7 @@
 //  Created:
 //    23 Oct 2024, 10:25:43
 //  Last edited:
-//    24 Oct 2024, 12:07:02
+//    06 Dec 2024, 18:02:38
 //  Auto updated?
 //    Yes
 //
@@ -17,7 +17,8 @@
 mod auth;
 mod paths;
 mod server;
-pub mod spec;
 
-// Use some of it
+// Re-exports
+pub use axum_server_spec as spec;
+// Use local parts
 pub use server::*;

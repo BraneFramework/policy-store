@@ -44,6 +44,7 @@ required-features = ["axum-server", "jwk-auth", "jwk-auth-kid", "sqlite-database
 
 [dependencies]
 axum-server = { path = "lib/servers/axum", optional = true }
+axum-server-spec = { path = "lib/servers/axum-spec", optional = true }
 jwk-auth = { path = "lib/auth/jwk", optional = true }
 no-op-auth = { path = "lib/auth/no-op", optional = true }
 specifications = { path = "lib/spec" }
@@ -51,10 +52,10 @@ sqlite-database = { path = "lib/databases/sqlite", optional = true }
 
 
 [dev-dependencies]
-clap = { version = "4.5.20", features = ["derive"] }
-tokio = { version = "1.0", default-features = false, features = ["macros", "rt"] }
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+clap = { version = "4.5.23", features = ["derive"] }
+tokio = { version = "1.42.0", default-features = false, features = ["macros", "rt"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 error-trace = { git = "https://github.com/Lut99/error-trace-rs", tag = "v3.2.1" }
 
@@ -65,7 +66,8 @@ default = []
 all = ["servers", "auths", "databases"]
 
 servers = ["axum-server"]
-axum-server = ["dep:axum-server"]
+axum-server = ["axum-server-spec", "dep:axum-server"]
+axum-server-spec = ["dep:axum-server-spec"]
 
 auths = ["jwk-auth", "no-op-auth"]
 jwk-auth = ["dep:jwk-auth"]

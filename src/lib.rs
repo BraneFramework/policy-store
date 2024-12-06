@@ -4,7 +4,7 @@
 //  Created:
 //    18 Oct 2024, 17:31:50
 //  Last edited:
-//    24 Oct 2024, 14:05:57
+//    06 Dec 2024, 18:01:14
 //  Auto updated?
 //    Yes
 //
@@ -17,6 +17,10 @@
 pub mod servers {
     #[cfg(feature = "axum-server")]
     pub use axum_server as axum;
+    #[cfg(all(not(feature = "axum-server"), feature = "axum-server-spec"))]
+    pub mod axum {
+        pub use axum_server_spec as spec;
+    }
 }
 
 pub mod auth {

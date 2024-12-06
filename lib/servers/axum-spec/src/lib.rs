@@ -1,26 +1,31 @@
-//  SPEC.rs
+//  LIB.rs
 //    by Lut99
 //
 //  Created:
-//    24 Oct 2024, 12:05:52
+//    06 Dec 2024, 17:59:58
 //  Last edited:
-//    06 Dec 2024, 17:49:16
+//    06 Dec 2024, 18:03:37
 //  Auto updated?
 //    Yes
 //
 //  Description:
-//!   Defines the input/output structs for the server.
+//!   Pseudo-server that defines the API endpoint locations, methods and
+//!   request/response bodies for the `axum-server`.
 //
 
 use core::str;
 use std::borrow::Cow;
 use std::collections::HashMap;
+#[cfg(feature = "axum")]
 use std::convert::Infallible;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+#[cfg(feature = "axum")]
 use axum::handler::Handler;
+#[cfg(feature = "axum")]
 use axum::routing::MethodRouter;
+#[cfg(feature = "axum")]
 use axum::routing::method_routing::{delete, get, post, put};
 use hyper::Method;
 use serde::{Deserialize, Serialize};
@@ -50,6 +55,7 @@ impl EndpointPath {
     ///
     /// # Returns
     /// A new [`MethodRouter`] that encodes to axum when to call the given `handler`.
+    #[cfg(feature = "axum")]
     pub fn method<H, T, S>(&self, handler: H) -> MethodRouter<S, Infallible>
     where
         H: Handler<T, S>,

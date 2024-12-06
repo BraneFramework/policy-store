@@ -1,0 +1,22 @@
+[package]
+name = "axum-server-spec"
+version = "0.2.0"
+edition = "2021"
+authors = ["Bas Kloosterman", "Tim Müller"]
+repository.workspace = true
+license.workspace = true
+description = "Pseudo-server that defines the API endpoint locations, methods and request/response bodies for the `axum-server`."
+
+
+[dependencies]
+axum = { version = "0.7.7", optional = true }
+hyper = "1.5.0"
+serde = { version = "1.0.213", features = ["derive"] }
+
+specifications = { path = "../../spec" }
+
+
+[features]
+default = []
+
+axum = ["dep:axum"]

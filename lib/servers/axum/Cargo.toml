@@ -15,13 +15,14 @@ hyper = "1.5.0"
 hyper-util = "0.1.9"
 serde = { version = "1.0.213", features = ["derive"] }
 serde_json = "1.0.132"
-thiserror = "1.0.61"
+thiserror = "2.0.4"
 tokio = { version = "1.41.0", default-features = false, features = ["signal"] }
 tower-service = "0.3.3"
 tracing = "0.1.40"
 
 error-trace = { git = "https://github.com/Lut99/error-trace-rs", tag = "v3.2.1", features = ["serde"] }
 
+axum-server-spec = { path = "../axum-spec", features = ["axum"] }
 specifications = { path = "../../spec" }
 
 
