@@ -4,7 +4,7 @@
 //  Created:
 //    06 Dec 2024, 17:59:58
 //  Last edited:
-//    06 Dec 2024, 18:03:37
+//    06 Dec 2024, 18:06:40
 //  Auto updated?
 //    Yes
 //
@@ -27,7 +27,7 @@ use axum::handler::Handler;
 use axum::routing::MethodRouter;
 #[cfg(feature = "axum")]
 use axum::routing::method_routing::{delete, get, post, put};
-use hyper::Method;
+use http::Method;
 use serde::{Deserialize, Serialize};
 use specifications::metadata::{AttachedMetadata, Metadata, User};
 
