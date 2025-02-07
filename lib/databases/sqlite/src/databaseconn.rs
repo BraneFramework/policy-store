@@ -4,7 +4,7 @@
 //  Created:
 //    22 Oct 2024, 14:37:56
 //  Last edited:
-//    25 Nov 2024, 10:52:33
+//    07 Feb 2025, 16:53:45
 //  Auto updated?
 //    Yes
 //
@@ -379,6 +379,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                     let next_version: i64 = latest + 1;
 
                     // Construct the policy itself
+                    debug!("Adding new policy {next_version}...");
                     let content = match serde_json::to_string(&content) {
                         Ok(content) => content,
                         Err(err) => return Err(ConnectionError::ContentSerialize { name: metadata.name, err }),
@@ -386,6 +387,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                     let model = SqlitePolicy {
                         name: metadata.name,
                         description: metadata.description,
+                        language: metadata.language,
                         version: next_version,
                         creator: self.user.id.clone(),
                         created_at: Utc::now().naive_utc(),
@@ -424,6 +426,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                     }
 
                     // Otherwise, build the model and submit it
+                    debug!("Activating policy {version}...");
                     let model = SqliteActiveVersion::new(version as i64, self.user.id.clone());
                     if let Err(err) = diesel::insert_into(active_version).values(&model).execute(conn) {
                         return Err(ConnectionError::SetActive { path: self.path.into(), version, err });
@@ -453,6 +456,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                     };
 
                     // If we found one, then update it
+                    debug!("Deactivating active policy {av}...");
                     if let Err(err) = diesel::update(active_version)
                         .filter(version.eq(av as i64))
                         .set((deactivated_on.eq(Utc::now().naive_local()), deactivated_by.eq(&self.user.id)))

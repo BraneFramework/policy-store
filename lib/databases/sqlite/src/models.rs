@@ -8,6 +8,7 @@ use crate::schema::{active_version, policies};
 pub struct SqlitePolicy {
     pub description: String,
     pub name: String,
+    pub language: String,
     pub version: i64,
     pub creator: String,
     pub created_at: NaiveDateTime,
