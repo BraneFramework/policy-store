@@ -1,0 +1,53 @@
+name: Cargo test
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      rust-version:
+        required: false
+        type: string
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+  RUSTDOCFLAGS: -Dwarnings
+
+jobs:
+  cargo-test:
+    name: "${{ inputs.os }} / ${{ inputs.rust-version }}"
+    runs-on: ${{ inputs.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Override active rustup toolchain
+        if: inputs.rust-version != ''
+        run: echo "RUSTUP_TOOLCHAIN=${{ inputs.rust-version }}" >> $GITHUB_ENV
+
+      - name: Show toolchain
+        run: rustup show active-toolchain
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+
+      - name: Run unit tests with coverage
+        run: cargo llvm-cov nextest --lib --workspace --codecov --output-path codecov-unittests.json
+
+      - name: Run doctests
+        run: cargo test --workspace --doc
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: tests,unit-tests
+          files: codecov-unittests.json
+          fail_ci_if_error: true

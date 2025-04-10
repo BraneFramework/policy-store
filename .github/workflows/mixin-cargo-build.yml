@@ -1,0 +1,44 @@
+name: Cargo Build
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      rust-version:
+        required: false
+        type: string
+      cache:
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+  RUSTDOCFLAGS: -Dwarnings
+
+jobs:
+  cargo-build:
+    name: ${{ inputs.os }}"
+    runs-on: ${{ inputs.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Override active rustup toolchain
+        if: inputs.rust-version != ''
+        run: echo "RUSTUP_TOOLCHAIN=${{ inputs.rust-version }}" >> $GITHUB_ENV
+
+      - name: Show toolchain
+        run: rustup show active-toolchain
+
+      - name: Cache dependencies
+        if: inputs.cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build project
+        run: cargo build --workspace
