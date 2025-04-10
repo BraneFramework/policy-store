@@ -64,14 +64,15 @@ jobs:
       os: macos-latest
       cache: true
 
-  test:
-    needs: check-stable-linux
-    name: "Tests"
-    # TODO: Run on macOS and windows as well using matrix (if this provides any value)
-    uses: ./.github/workflows/mixin-cargo-test.yml
-    secrets: inherit
-    with:
-      os: ubuntu-24.04
+  # There currently aren't really any tests
+  # test:
+  #   needs: check-stable-linux
+  #   name: "Tests"
+  #   # TODO: Run on macOS and windows as well using matrix (if this provides any value)
+  #   uses: ./.github/workflows/mixin-cargo-test.yml
+  #   secrets: inherit
+  #   with:
+  #     os: ubuntu-24.04
 
   clippy:
     needs: check-stable-linux
