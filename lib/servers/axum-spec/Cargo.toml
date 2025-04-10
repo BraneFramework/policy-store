@@ -1,6 +1,7 @@
 [package]
 name = "axum-server-spec"
 version = "0.2.0"
+rust-version = "1.78"
 edition = "2021"
 authors = ["Bas Kloosterman", "Tim Müller"]
 repository.workspace = true
