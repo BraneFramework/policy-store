@@ -223,7 +223,7 @@ where
             debug!("Received JWT: {raw_jwt:?}");
 
             // Fetch the header from the JWT
-            let header: Header = match jsonwebtoken::decode_header(&raw_jwt).map_err(|err| ClientError::IllegalJwt {
+            let header: Header = match jsonwebtoken::decode_header(raw_jwt).map_err(|err| ClientError::IllegalJwt {
                 header: AUTHORIZATION.as_str(),
                 raw: raw_jwt.into(),
                 err,
@@ -241,7 +241,7 @@ where
             };
             let validation = Validation::new(header.alg);
             debug!("Validating JWT with {:?}...", header.alg);
-            let result = match jsonwebtoken::decode::<HashMap<String, serde_json::Value>>(&raw_jwt, &decoding_key, &validation) {
+            let result = match jsonwebtoken::decode::<HashMap<String, serde_json::Value>>(raw_jwt, &decoding_key, &validation) {
                 Ok(res) => res,
                 Err(err) => return Ok(Err(ClientError::JwtValidate { header: AUTHORIZATION.as_str(), err })),
             };

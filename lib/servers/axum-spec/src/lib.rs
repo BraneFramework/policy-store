@@ -96,7 +96,7 @@ impl EndpointPath {
         }
         let mut i: usize = 0;
         let path: PathBuf = PathBuf::from(self.path)
-            .into_iter()
+            .iter()
             .map(|com| {
                 // SAFETY: It came from a string, so why wouldn't be UTF-8??? (famous last words)
                 let scom: &str = unsafe { com.to_str().unwrap_unchecked() };

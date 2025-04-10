@@ -207,13 +207,13 @@ where
             let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    let msg: String = format!("Failed to deactivate any active policy");
+                    let msg: String = "Failed to deactivate any active policy".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
             };
             if let Err(err) = conn.deactivate().await {
-                let msg: String = format!("Failed to deactivate any active policy");
+                let msg: String = "Failed to deactivate any active policy".to_string();
                 error!("{}", trace!(("{msg}"), err));
                 return (StatusCode::INTERNAL_SERVER_ERROR, msg);
             };
@@ -242,7 +242,7 @@ where
             let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    let msg: String = format!("Failed to deactivate any active policy");
+                    let msg: String = "Failed to deactivate any active policy".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -250,7 +250,7 @@ where
             let versions: HashMap<u64, Metadata> = match conn.get_versions().await {
                 Ok(versions) => versions,
                 Err(err) => {
-                    let msg: String = format!("Failed to deactivate any active policy");
+                    let msg: String = "Failed to deactivate any active policy".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -260,7 +260,7 @@ where
             match serde_json::to_string(&GetVersionsResponse { versions }) {
                 Ok(versions) => (StatusCode::OK, versions),
                 Err(err) => {
-                    let msg: String = format!("Failed to serialize result");
+                    let msg: String = "Failed to serialize result".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     (StatusCode::INTERNAL_SERVER_ERROR, msg)
                 },
@@ -284,7 +284,7 @@ where
             let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    let msg: String = format!("Failed to get active policy");
+                    let msg: String = "Failed to get active policy".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -292,7 +292,7 @@ where
             let version: Option<u64> = match conn.get_active_version().await {
                 Ok(version) => version,
                 Err(err) => {
-                    let msg: String = format!("Failed to get active policy");
+                    let msg: String = "Failed to get active policy".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -302,7 +302,7 @@ where
             match serde_json::to_string(&GetActiveVersionResponse { version }) {
                 Ok(res) => (StatusCode::OK, res),
                 Err(err) => {
-                    let msg: String = format!("Failed to serialize result");
+                    let msg: String = "Failed to serialize result".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     (StatusCode::INTERNAL_SERVER_ERROR, msg)
                 },
@@ -326,7 +326,7 @@ where
             let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    let msg: String = format!("Failed to get activator");
+                    let msg: String = "Failed to get activator".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -334,7 +334,7 @@ where
             let user: Option<User> = match conn.get_activator().await {
                 Ok(user) => user,
                 Err(err) => {
-                    let msg: String = format!("Failed to get activator");
+                    let msg: String = "Failed to get activator".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -344,7 +344,7 @@ where
             match serde_json::to_string(&GetActivatorResponse { user }) {
                 Ok(versions) => (StatusCode::OK, versions),
                 Err(err) => {
-                    let msg: String = format!("Failed to serialize result");
+                    let msg: String = "Failed to serialize result".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     (StatusCode::INTERNAL_SERVER_ERROR, msg)
                 },
@@ -370,7 +370,7 @@ where
             let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    let msg: String = format!("Failed to get policy metadata");
+                    let msg: String = "Failed to get policy metadata".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -381,7 +381,7 @@ where
                     return (StatusCode::NOT_FOUND, String::new());
                 },
                 Err(err) => {
-                    let msg: String = format!("Failed to get policy metadata");
+                    let msg: String = "Failed to get policy metadata".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -391,7 +391,7 @@ where
             match serde_json::to_string(&GetVersionMetadataResponse { metadata }) {
                 Ok(versions) => (StatusCode::OK, versions),
                 Err(err) => {
-                    let msg: String = format!("Failed to serialize result");
+                    let msg: String = "Failed to serialize result".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     (StatusCode::INTERNAL_SERVER_ERROR, msg)
                 },
@@ -418,7 +418,7 @@ where
             let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    let msg: String = format!("Failed to get policy content");
+                    let msg: String = "Failed to get policy content".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -429,7 +429,7 @@ where
                     return (StatusCode::NOT_FOUND, String::new());
                 },
                 Err(err) => {
-                    let msg: String = format!("Failed to get policy content");
+                    let msg: String = "Failed to get policy content".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     return (StatusCode::INTERNAL_SERVER_ERROR, msg);
                 },
@@ -439,7 +439,7 @@ where
             match serde_json::to_string(&GetVersionContentResponse { content }) {
                 Ok(content) => (StatusCode::OK, content),
                 Err(err) => {
-                    let msg: String = format!("Failed to serialize result");
+                    let msg: String = "Failed to serialize result".to_string();
                     error!("{}", trace!(("{msg}"), err));
                     (StatusCode::INTERNAL_SERVER_ERROR, msg)
                 },

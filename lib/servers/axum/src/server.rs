@@ -155,54 +155,52 @@ impl<A, D> AxumServer<A, D> {
     ///
     /// # Errors
     /// This function may fail if it failed to bind the server at the internal address.
-    pub fn serve_router(this: Arc<Self>, router: Router<()>) -> impl Future<Output = Result<(), Error>> {
-        async move {
-            let span = span!(Level::INFO, "AxumServer::serve_router", state = "starting", client = Empty);
-            let router: IntoMakeServiceWithConnectInfo<Router, SocketAddr> = Router::<()>::into_make_service_with_connect_info(router);
+    pub async fn serve_router(this: Arc<Self>, router: Router<()>) -> Result<(), Error> {
+        let span = span!(Level::INFO, "AxumServer::serve_router", state = "starting", client = Empty);
+        let router: IntoMakeServiceWithConnectInfo<Router, SocketAddr> = Router::<()>::into_make_service_with_connect_info(router);
 
-            // Bind the TCP Listener
-            debug!("Binding server on '{}'...", this.addr);
-            let listener: TcpListener = match TcpListener::bind(this.addr).await {
-                Ok(listener) => listener,
-                Err(err) => return Err(Error::ListenerBind { addr: this.addr, err }),
+        // Bind the TCP Listener
+        debug!("Binding server on '{}'...", this.addr);
+        let listener: TcpListener = match TcpListener::bind(this.addr).await {
+            Ok(listener) => listener,
+            Err(err) => return Err(Error::ListenerBind { addr: this.addr, err }),
+        };
+
+        // Accept new connections!
+        info!("Initialization OK, awaiting connections...");
+        span.record("state", "running");
+        loop {
+            // Accept a new connection
+            let (socket, remote_addr): (TcpStream, SocketAddr) = match listener.accept().await {
+                Ok(res) => res,
+                Err(err) => {
+                    error!("{}", trace!(("Failed to accept incoming connection"), err));
+                    continue;
+                },
             };
+            span.record("client", remote_addr.to_string());
 
-            // Accept new connections!
-            info!("Initialization OK, awaiting connections...");
-            span.record("state", "running");
-            loop {
-                // Accept a new connection
-                let (socket, remote_addr): (TcpStream, SocketAddr) = match listener.accept().await {
-                    Ok(res) => res,
-                    Err(err) => {
-                        error!("{}", trace!(("Failed to accept incoming connection"), err));
-                        continue;
-                    },
-                };
-                span.record("client", remote_addr.to_string());
+            // Move the rest to a separate task
+            let router: IntoMakeServiceWithConnectInfo<_, _> = router.clone();
+            tokio::spawn(async move {
+                debug!("Handling incoming connection from '{remote_addr}'");
 
-                // Move the rest to a separate task
-                let router: IntoMakeServiceWithConnectInfo<_, _> = router.clone();
-                tokio::spawn(async move {
-                    debug!("Handling incoming connection from '{remote_addr}'");
-
-                    // Build  the service
-                    let service = hyper::service::service_fn(|request: Request<Incoming>| {
-                        // Sadly, we must `move` again because this service could be called multiple times (at least according to the typesystem)
-                        let mut router = router.clone();
-                        async move {
-                            // SAFETY: We can call `unwrap()` because the call returns an infallible.
-                            router.call(remote_addr).await.unwrap().call(request).await
-                        }
-                    });
-
-                    // Create a service that handles this for us
-                    let socket: TokioIo<_> = TokioIo::new(socket);
-                    if let Err(err) = HyperBuilder::new(TokioExecutor::new()).serve_connection_with_upgrades(socket, service).await {
-                        error!("{}", trace!(("Failed to serve incoming connection"), *err));
+                // Build  the service
+                let service = hyper::service::service_fn(|request: Request<Incoming>| {
+                    // Sadly, we must `move` again because this service could be called multiple times (at least according to the typesystem)
+                    let mut router = router.clone();
+                    async move {
+                        // SAFETY: We can call `unwrap()` because the call returns an infallible.
+                        router.call(remote_addr).await.unwrap().call(request).await
                     }
                 });
-            }
+
+                // Create a service that handles this for us
+                let socket: TokioIo<_> = TokioIo::new(socket);
+                if let Err(err) = HyperBuilder::new(TokioExecutor::new()).serve_connection_with_upgrades(socket, service).await {
+                    error!("{}", trace!(("Failed to serve incoming connection"), *err));
+                }
+            });
         }
     }
 }
