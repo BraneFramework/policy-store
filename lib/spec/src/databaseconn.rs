@@ -50,7 +50,7 @@ pub trait DatabaseConnector {
 }
 
 // Pointer-like impls
-impl<'a, T: DatabaseConnector> DatabaseConnector for &'a T {
+impl<T: DatabaseConnector> DatabaseConnector for &T {
     type Content = T::Content;
     type Connection<'s>
         = T::Connection<'s>
@@ -63,7 +63,7 @@ impl<'a, T: DatabaseConnector> DatabaseConnector for &'a T {
         <T as DatabaseConnector>::connect(self, user)
     }
 }
-impl<'a, T: DatabaseConnector> DatabaseConnector for &'a mut T {
+impl<T: DatabaseConnector> DatabaseConnector for &mut T {
     type Content = T::Content;
     type Connection<'s>
         = T::Connection<'s>
@@ -197,7 +197,7 @@ pub trait DatabaseConnection {
 
 
 // Pointer-like impls
-impl<'a, T: DatabaseConnection> DatabaseConnection for &'a mut T {
+impl<T: DatabaseConnection> DatabaseConnection for &mut T {
     type Content = T::Content;
     type Error = T::Error;
 

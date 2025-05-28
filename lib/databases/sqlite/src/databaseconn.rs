@@ -309,7 +309,7 @@ pub struct SQLiteConnection<'a, C> {
     /// Remembers the type of content chosen for this connection.
     _content: PhantomData<C>,
 }
-impl<'a, C> SQLiteConnection<'a, C> {
+impl<C> SQLiteConnection<'_, C> {
     /// Helper function for doing the non-async active version retrieval.
     ///
     /// # Arguments
@@ -344,11 +344,11 @@ impl<'a, C> SQLiteConnection<'a, C> {
                 },
                 None => Ok(None),
             },
-            Err(err) => return Err(ConnectionError::GetActiveVersion { path: path.into(), err }),
+            Err(err) => Err(ConnectionError::GetActiveVersion { path: path.into(), err }),
         }
     }
 }
-impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnection<'a, C> {
+impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnection<'_, C> {
     type Content = C;
     type Error = ConnectionError;
 
@@ -417,7 +417,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                     let _span = span;
 
                     // Get the information about what to activate
-                    let av = Self::_get_active_version(&self.path, conn)?;
+                    let av = Self::_get_active_version(self.path, conn)?;
 
                     // They may already be the same, ez
                     if av.is_some_and(|v| v == version) {
@@ -447,7 +447,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
             tokio::task::block_in_place(move || {
                 self.conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
                     // Get the current active version, if any
-                    let av = match Self::_get_active_version(&self.path, conn)? {
+                    let av = match Self::_get_active_version(self.path, conn)? {
                         Some(av) => av,
                         None => {
                             info!("Deactivated a policy whilst none were active");
@@ -505,7 +505,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
             let _span = span!(Level::INFO, "SQLiteConnection::get_active");
 
             // Do a call to get the active, if any
-            tokio::task::block_in_place(move || Self::_get_active_version(&self.path, &mut self.conn))
+            tokio::task::block_in_place(move || Self::_get_active_version(self.path, &mut self.conn))
         }
     }
 
@@ -533,7 +533,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                     },
                     None => Ok(None),
                 },
-                Err(err) => return Err(ConnectionError::GetActiveVersion { path: self.path.into(), err }),
+                Err(err) => Err(ConnectionError::GetActiveVersion { path: self.path.into(), err }),
             }
         }
     }
@@ -554,7 +554,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
             {
                 Ok(mut r) => {
                     // Extract the version itself
-                    if r.len() < 1 {
+                    if r.is_empty() {
                         return Ok(None);
                     }
                     let (description, name, language, version, creator, created_at) = r.remove(0);
@@ -592,7 +592,7 @@ impl<'a, C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteCo
                 {
                     Ok(mut r) => {
                         // Extract the version itself
-                        if r.len() < 1 {
+                        if r.is_empty() {
                             return Ok(None);
                         }
                         let (name, content) = r.remove(0);

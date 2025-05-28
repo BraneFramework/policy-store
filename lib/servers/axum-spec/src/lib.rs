@@ -43,7 +43,7 @@ pub struct EndpointPath {
     /// ```plan
     /// /v2/policy/:version
     /// ```
-    /// will cause the user to have to given an argument in [`EndpointPath::instantiated()`]. Note
+    /// will cause the user to have to given an argument in [`EndpointPath::instantiated_path()`]. Note
     /// that path arguments are defined as path segments beginning with a colon.
     pub path:   &'static str,
 }
@@ -77,7 +77,7 @@ impl EndpointPath {
     /// values. Therefore, this function tends to be used when using the API.
     ///
     /// # Returns
-    /// A [`str`] that encodes the location of this endpoint.
+    /// A [`Cow<'static, str>`] that encodes the location of this endpoint.
     ///
     /// # Panics
     /// This function panics if:
@@ -96,7 +96,7 @@ impl EndpointPath {
         }
         let mut i: usize = 0;
         let path: PathBuf = PathBuf::from(self.path)
-            .into_iter()
+            .iter()
             .map(|com| {
                 // SAFETY: It came from a string, so why wouldn't be UTF-8??? (famous last words)
                 let scom: &str = unsafe { com.to_str().unwrap_unchecked() };
@@ -128,7 +128,7 @@ impl EndpointPath {
 /// Path of the endpoint to add a new policy version.
 pub const ADD_VERSION_PATH: EndpointPath = EndpointPath { method: Method::POST, path: "/v2/policies" };
 
-/// What to send in the body of a request when [adding](crate::server::AxumServer::add_version())
+/// What to send in the body of a request when [adding](axum-server::server::AxumServer::add_version())
 /// a new version.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AddVersionRequest<C> {
@@ -138,7 +138,7 @@ pub struct AddVersionRequest<C> {
     pub contents: C,
 }
 
-/// Replied when [adding](crate::server::AxumServer::add_version()) a new version.
+/// Replied when [adding](axum-server::server::AxumServer::add_version()) a new version.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct AddVersionResponse {
     /// The newly assigned ID of the version.
@@ -150,7 +150,7 @@ pub struct AddVersionResponse {
 /// Path of the endpoint to activate an already submitted policy version.
 pub const ACTIVATE_PATH: EndpointPath = EndpointPath { method: Method::PUT, path: "/v2/policies/active" };
 
-/// What to send in the body of a request when [activating](crate::server::AxumServer::activate())
+/// What to send in the body of a request when [activating](axum-server::server::AxumServer::activate())
 /// a version.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct ActivateRequest {
@@ -168,7 +168,7 @@ pub const DEACTIVATE_PATH: EndpointPath = EndpointPath { method: Method::DELETE,
 /// Path of the endpoint to retrieve the metadata of all submitted policy versions.
 pub const GET_VERSIONS_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies" };
 
-/// Replied when [listing](crate::server::AxumServer::get_versions()) all versions.
+/// Replied when [listing](axum-server::server::AxumServer::get_versions()) all versions.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GetVersionsResponse {
     /// The versions in the reasoner.
@@ -180,7 +180,7 @@ pub struct GetVersionsResponse {
 /// Path of the endpoint to retrieve the currently active policy version, if any.
 pub const GET_ACTIVE_VERSION_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/active" };
 
-/// Replied when [retrieving the active policy](crate::server::AxumServer::get_active_version()).
+/// Replied when [retrieving the active policy](axum-server::server::AxumServer::get_active_version()).
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct GetActiveVersionResponse {
     /// The version of the active policy, if any.
@@ -192,7 +192,7 @@ pub struct GetActiveVersionResponse {
 /// Path of the endpoint to retrieve the person who activated the currently active policy version, if any.
 pub const GET_ACTIVATOR_VERSION_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/active/activator" };
 
-/// Replied when [retrieving the activator](crate::server::AxumServer::get_activator()).
+/// Replied when [retrieving the activator](axum-server::server::AxumServer::get_activator()).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GetActivatorResponse {
     /// The person who activated the active policy, if any.
@@ -204,7 +204,7 @@ pub struct GetActivatorResponse {
 /// Path of the endpoint to retrieve the metadata of a particular policy version.
 pub const GET_VERSION_METADATA_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/:version" };
 
-/// Replied when [retrieving metadata](crate::server::AxumServer::get_version_metadata()).
+/// Replied when [retrieving metadata](axum-server::server::AxumServer::get_version_metadata()).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GetVersionMetadataResponse {
     /// The metadata of the requested policy.
@@ -216,7 +216,7 @@ pub struct GetVersionMetadataResponse {
 /// Path of the endpoint to retrieve the contents of a particular policy version.
 pub const GET_VERSION_CONTENT_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/:version/content" };
 
-/// Replied when [retrieving content](crate::server::AxumServer::get_version_content()).
+/// Replied when [retrieving content](axum-server::server::AxumServer::get_version_content()).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GetVersionContentResponse<C> {
     /// The content of the requested policy.

@@ -21,10 +21,10 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::Response;
 use error_trace::ErrorTrace as _;
-use specifications::authresolver::HttpError;
 use specifications::AuthResolver;
+use specifications::authresolver::HttpError;
 use thiserror::Error;
-use tracing::{error, info, span, Level};
+use tracing::{Level, error, info, span};
 
 use crate::server::AxumServer;
 

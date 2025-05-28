@@ -21,8 +21,8 @@ use policy_store::auth::no_op::NoOpResolver;
 use policy_store::databases::sqlite::SQLiteDatabase;
 use policy_store::servers::axum::AxumServer;
 use policy_store::spec::Server as _;
-use tokio::signal::unix::{signal, SignalKind};
-use tracing::{debug, error, info, warn, Level};
+use tokio::signal::unix::{SignalKind, signal};
+use tracing::{Level, debug, error, info, warn};
 
 
 /***** ARGUMENTS *****/
