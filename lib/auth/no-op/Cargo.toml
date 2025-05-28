@@ -10,12 +10,8 @@ description = "Implements an `AuthResolver` that doesn't actually resolve anythi
 
 
 [dependencies]
-# base64ct = "1.6.0"
-http = "1.1.0"
-# jsonwebtoken = "9.3.0"
-# serde_json = "1.0.132"
-# thiserror = "1.0.61"
-tracing = "0.1.40"
+http = "1.0.0"
+tracing = "0.1.37"
 
 specifications = { path = "../../spec" }
 

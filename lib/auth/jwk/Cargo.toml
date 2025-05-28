@@ -10,12 +10,16 @@ description = "Implements a JSON Web Token (JWT) / JSON Web Key (JWK)-based sche
 
 
 [dependencies]
-base64ct = { version = "1.6.0", features = ["std"] }
-http = "1.1.0"
-jsonwebtoken = "9.3.0"
-serde_json = "1.0.132"
-thiserror = "1.0.61"
-tracing = "0.1.40"
+base64ct = { version = "1.0.1", features = ["std"] }
+http = "1.0.0"
+jsonwebtoken = "9.0.0"
+serde_json = "1.0.29"
+thiserror = "2.0.0"
+tracing = "0.1.37"
+
+
+# Fixing transient minimal version issues
+time = "0.3.35"
 
 specifications = { path = "../../spec" }
 
