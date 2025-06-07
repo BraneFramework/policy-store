@@ -58,7 +58,7 @@ tokio = { version = "1.44.2", default-features = false, features = ["macros", "r
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
-error-trace = { git = "https://github.com/Lut99/error-trace-rs", tag = "v3.2.1" }
+error-trace = "3.3.1"
 
 
 [features]

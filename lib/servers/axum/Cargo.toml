@@ -21,7 +21,7 @@ tokio = { version = "1.44.2", default-features = false, features = ["signal"] }
 tower-service = "0.3.3"
 tracing = "0.1.37"
 
-error-trace = { git = "https://github.com/Lut99/error-trace-rs", tag = "v3.2.1", features = ["serde"] }
+error-trace = { version = "3.3.1", features = ["serde"] }
 
 axum-server-spec = { path = "../axum-spec", features = ["axum"] }
 specifications = { path = "../../spec" }

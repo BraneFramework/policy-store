@@ -437,7 +437,9 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "error-trace"
-version = "3.2.1"
+version = "3.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a17beb87ca4ef7c5edd18148b494b437b00a019e6f22bf1e557c2f370d24c445"
 dependencies = [
  "serde",
 ]
