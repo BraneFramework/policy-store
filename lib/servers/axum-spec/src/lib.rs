@@ -41,7 +41,7 @@ pub struct EndpointPath {
     ///
     /// You can use path arguments to allow clients to instantiate them. For example, the path
     /// ```plan
-    /// /v2/policy/:version
+    /// /v2/policy/{version}
     /// ```
     /// will cause the user to have to given an argument in [`EndpointPath::instantiated_path()`]. Note
     /// that path arguments are defined as path segments beginning with a colon.
@@ -202,7 +202,7 @@ pub struct GetActivatorResponse {
 
 
 /// Path of the endpoint to retrieve the metadata of a particular policy version.
-pub const GET_VERSION_METADATA_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/:version" };
+pub const GET_VERSION_METADATA_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/{version}" };
 
 /// Replied when [retrieving metadata](axum-server::server::AxumServer::get_version_metadata()).
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -214,7 +214,7 @@ pub struct GetVersionMetadataResponse {
 
 
 /// Path of the endpoint to retrieve the contents of a particular policy version.
-pub const GET_VERSION_CONTENT_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/:version/content" };
+pub const GET_VERSION_CONTENT_PATH: EndpointPath = EndpointPath { method: Method::GET, path: "/v2/policies/{version}/content" };
 
 /// Replied when [retrieving content](axum-server::server::AxumServer::get_version_content()).
 #[derive(Clone, Debug, Deserialize, Serialize)]

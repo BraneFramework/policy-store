@@ -10,7 +10,7 @@ description = "Implements an out-of-the-box, standardized HTTP API for the polic
 
 
 [dependencies]
-axum = "0.7.0"
+axum = "0.8.0"
 futures = "0.3.11"
 hyper = "1.1.0"
 hyper-util = "0.1.3"
