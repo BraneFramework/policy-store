@@ -10,9 +10,9 @@ description = "Pseudo-server that defines the API endpoint locations, methods an
 
 
 [dependencies]
-axum = { version = "0.7.7", optional = true }
-http = "1.1.0"
-serde = { version = "1.0.213", features = ["derive"] }
+axum = { version = "0.8.0", optional = true }
+http = "1.0.0"
+serde = { version = "1.0.184", features = ["derive"] }
 
 specifications = { path = "../../spec" }
 

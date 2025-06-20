@@ -133,14 +133,14 @@ where
             .layer(axum::middleware::from_fn_with_state(this.clone(), Self::check))
             .with_state(this.clone());
         Router::<()>::new()
-            .nest("", add_version)
-            .nest("", activate)
-            .nest("", deactivate)
-            .nest("", get_versions)
-            .nest("", get_active_version)
-            .nest("", get_activator)
-            .nest("", get_version_metadata)
-            .nest("", get_version_content)
+            .merge(add_version)
+            .merge(activate)
+            .merge(deactivate)
+            .merge(get_versions)
+            .merge(get_active_version)
+            .merge(get_activator)
+            .merge(get_version_metadata)
+            .merge(get_version_content)
     }
 }
 impl<A, D> AxumServer<A, D> {

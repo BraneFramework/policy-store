@@ -10,9 +10,9 @@ description = "Provides public interfaces for things to be compatible with the p
 
 
 [dependencies]
-chrono = { version = "0.4.38", features = ["serde"] }
-http = "1.1.0"
-serde = { version = "1.0.213", features = ["derive"] }
+chrono = { version = "0.4.30", features = ["serde"] }
+http = "1.0.0"
+serde = { version = "1.0.184", features = ["derive"] }
 
 
 [features]
