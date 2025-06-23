@@ -18,9 +18,10 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use chrono::{NaiveDateTime, Utc};
+use deadpool::managed::Object;
+use deadpool_diesel::{Manager, Pool, PoolError};
 use diesel::connection::LoadConnection;
 use diesel::migration::MigrationSource;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::sqlite::Sqlite;
 use diesel::{Connection as _, ExpressionMethods as _, QueryDsl as _, RunQueryDsl as _, SelectableHelper as _, SqliteConnection};
 use diesel_migrations::{FileBasedMigrations, MigrationHarness as _};
@@ -45,7 +46,7 @@ pub enum DatabaseError {
     Connect {
         path: PathBuf,
         #[source]
-        err:  diesel::r2d2::PoolError,
+        err:  PoolError,
     },
     /// Failed to connect to the database when creating it.
     #[error("Failed to first-time connect to backend database {:?}", path.display())]
@@ -87,7 +88,7 @@ pub enum DatabaseError {
     PoolCreate {
         path: PathBuf,
         #[source]
-        err:  diesel::r2d2::PoolError,
+        err:  deadpool::managed::BuildError,
     },
 }
 
@@ -191,7 +192,7 @@ pub struct SQLiteDatabase<C> {
     /// The path to the file that we represent. Only retained during runtime for debugging.
     path:     PathBuf,
     /// The pool of connections.
-    pool:     Pool<ConnectionManager<SqliteConnection>>,
+    pool:     Pool<deadpool_diesel::Manager<SqliteConnection>>,
     /// Remembers the type of content used.
     _content: PhantomData<C>,
 }
@@ -242,7 +243,8 @@ impl<C> SQLiteDatabase<C> {
 
         // Create the pool
         debug!("Connecting to database {:?}...", path.display());
-        let pool: Pool<_> = match Pool::new(ConnectionManager::new(path.display().to_string())) {
+        let manager = Manager::new(path.display().to_string(), deadpool::Runtime::Tokio1);
+        let pool = match Pool::builder(manager).build() {
             Ok(pool) => pool,
             Err(err) => return Err(DatabaseError::PoolCreate { path, err }),
         };
@@ -288,7 +290,7 @@ impl<C: Send + Sync + DeserializeOwned + Serialize> DatabaseConnector for SQLite
         async move {
             // Attempt to get a connection from the pool
             debug!("Creating new connection to SQLite database {:?}...", self.path.display());
-            match self.pool.get() {
+            match self.pool.get().await {
                 Ok(conn) => Ok(SQLiteConnection { path: &self.path, conn, user, _content: PhantomData }),
                 Err(err) => Err(DatabaseError::Connect { path: self.path.clone(), err }),
             }
@@ -303,7 +305,7 @@ pub struct SQLiteConnection<'a, C> {
     /// The path to the file that we represent. Only retained during runtime for debugging.
     path:     &'a Path,
     /// The connection we wrap.
-    conn:     PooledConnection<ConnectionManager<SqliteConnection>>,
+    conn:     Object<Manager<SqliteConnection>>,
     /// The user that is doing everything in this connection.
     user:     &'a User,
     /// Remembers the type of content chosen for this connection.
@@ -362,7 +364,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
 
             debug!("Starting transaction...");
             tokio::task::block_in_place(move || {
-                self.conn.exclusive_transaction(|conn| -> Result<u64, Self::Error> {
+                self.conn.lock().unwrap().exclusive_transaction(|conn| -> Result<u64, Self::Error> {
                     // Trick the compiler into moving the span too
                     let _span = span;
 
@@ -412,7 +414,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
 
             debug!("Starting transaction...");
             tokio::task::block_in_place(move || {
-                self.conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
+                self.conn.lock().unwrap().exclusive_transaction(|conn| -> Result<(), Self::Error> {
                     // Trick the compiler into moving the span too
                     let _span = span;
 
@@ -445,7 +447,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
 
             debug!("Starting transaction...");
             tokio::task::block_in_place(move || {
-                self.conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
+                self.conn.lock().unwrap().exclusive_transaction(|conn| -> Result<(), Self::Error> {
                     // Get the current active version, if any
                     let av = match Self::_get_active_version(self.path, conn)? {
                         Some(av) => av,
@@ -482,7 +484,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
             match policy::policies
                 .order_by(crate::schema::policies::dsl::created_at.desc())
                 .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
-                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut self.conn)
+                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut *self.conn.lock().unwrap())
             {
                 Ok(r) => Ok(r
                     .into_iter()
@@ -505,7 +507,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
             let _span = span!(Level::INFO, "SQLiteConnection::get_active");
 
             // Do a call to get the active, if any
-            tokio::task::block_in_place(move || Self::_get_active_version(self.path, &mut self.conn))
+            tokio::task::block_in_place(move || Self::_get_active_version(self.path, &mut *self.conn.lock().unwrap()))
         }
     }
 
@@ -521,7 +523,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
                 .limit(1)
                 .order_by(crate::schema::active_version::dsl::activated_on.desc())
                 .select(SqliteActiveVersion::as_select())
-                .load(&mut self.conn)
+                .load(&mut *self.conn.lock().unwrap())
             {
                 Ok(mut r) => match r.pop() {
                     Some(av) => {
@@ -550,7 +552,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
                 .filter(crate::schema::policies::dsl::version.eq(version as i64))
                 .order_by(crate::schema::policies::dsl::created_at.desc())
                 .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
-                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut self.conn)
+                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut *self.conn.lock().unwrap())
             {
                 Ok(mut r) => {
                     // Extract the version itself
@@ -588,7 +590,7 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
                     .filter(crate::schema::policies::dsl::version.eq(version as i64))
                     .order_by(crate::schema::policies::dsl::created_at.desc())
                     .select((policy::name, policy::content))
-                    .load::<(String, String)>(&mut self.conn)
+                    .load::<(String, String)>(&mut *self.conn.lock().unwrap())
                 {
                     Ok(mut r) => {
                         // Extract the version itself
