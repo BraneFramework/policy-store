@@ -42,11 +42,7 @@ use crate::spec::{
 pub enum Error {
     /// Failed to bind on the given address.
     #[error("Failed to bind server on address '{addr}'")]
-    ListenerBind {
-        addr: SocketAddr,
-        #[source]
-        err:  std::io::Error,
-    },
+    ListenerBind { addr: SocketAddr, source: std::io::Error },
 }
 
 
@@ -127,10 +123,7 @@ impl<A, D> AxumServer<A, D> {
 
         // Bind the TCP Listener
         debug!("Binding server on '{}'...", this.addr);
-        let listener: TcpListener = match TcpListener::bind(this.addr).await {
-            Ok(listener) => listener,
-            Err(err) => return Err(Error::ListenerBind { addr: this.addr, err }),
-        };
+        let listener = TcpListener::bind(this.addr).await.map_err(|source| Error::ListenerBind { addr: this.addr, source })?;
 
         // Accept new connections!
         info!("Initialization OK, awaiting connections...");
@@ -156,10 +149,7 @@ impl<A, D> AxumServer<A, D> {
                 let service = hyper::service::service_fn(|request: Request<Incoming>| {
                     // Sadly, we must `move` again because this service could be called multiple times (at least according to the typesystem)
                     let mut router = router.clone();
-                    async move {
-                        // SAFETY: We can call `unwrap()` because the call returns an infallible.
-                        router.call(remote_addr).await.unwrap().call(request).await
-                    }
+                    async move { router.call(remote_addr).await.expect("Router returns infallible").call(request).await }
                 });
 
                 // Create a service that handles this for us

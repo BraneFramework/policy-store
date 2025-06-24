@@ -42,53 +42,25 @@ use crate::models::{SqliteActiveVersion, SqlitePolicy};
 pub enum DatabaseError {
     /// Failed to create a new connection to the backend database.
     #[error("Failed to connect to backend database {:?}", path.display())]
-    Connect {
-        path: PathBuf,
-        #[source]
-        err:  PoolError,
-    },
+    Connect { path: PathBuf, source: PoolError },
     /// Failed to connect to the database when creating it.
     #[error("Failed to first-time connect to backend database {:?}", path.display())]
-    ConnectDatabase {
-        path: PathBuf,
-        #[source]
-        err:  diesel::ConnectionError,
-    },
+    ConnectDatabase { path: PathBuf, source: diesel::ConnectionError },
     /// Failed to create the database.
     #[error("Failed to create database file {:?}", path.display())]
-    DatabaseCreate {
-        path: PathBuf,
-        #[source]
-        err:  std::io::Error,
-    },
+    DatabaseCreate { path: PathBuf, source: std::io::Error },
     /// Failed to create the parent directory of the database.
     #[error("Failed to create database parent directory {:?}", path.display())]
-    DatabaseDirCreate {
-        path: PathBuf,
-        #[source]
-        err:  std::io::Error,
-    },
+    DatabaseDirCreate { path: PathBuf, source: std::io::Error },
     /// Failed to apply the migrations in a particular folder to a particular database.
     #[error("Failed to apply migrations to new database {:?}", path.display())]
-    MigrationsApply {
-        path: PathBuf,
-        #[source]
-        err:  Box<dyn 'static + std::error::Error>,
-    },
+    MigrationsApply { path: PathBuf, source: Box<dyn 'static + std::error::Error> },
     /// Failed to find the migrations for a database in the given folder.
     #[error("Failed to find migrations in migrations folder {:?}", migrations_dir.display())]
-    MigrationsFind {
-        migrations_dir: PathBuf,
-        #[source]
-        err: diesel_migrations::MigrationError,
-    },
+    MigrationsFind { migrations_dir: PathBuf, source: diesel_migrations::MigrationError },
     /// Failed to create a new connection pool.
     #[error("Failed to create a connection pool to backend database {:?}", path.display())]
-    PoolCreate {
-        path: PathBuf,
-        #[source]
-        err:  deadpool::managed::BuildError,
-    },
+    PoolCreate { path: PathBuf, source: deadpool::managed::BuildError },
 }
 
 /// Defines errors originating from the [`SQLiteConnection`].
@@ -96,88 +68,42 @@ pub enum DatabaseError {
 pub enum ConnectionError {
     /// Failed to add a new version to the backend database.
     #[error("Failed to add a new version to backend database {:?}", path.display())]
-    AddVersion {
-        path: PathBuf,
-        #[source]
-        err:  diesel::result::Error,
-    },
+    AddVersion { path: PathBuf, source: diesel::result::Error },
     /// Failed to deserialize the given content from JSON.
     #[error("Failed to deserialize the given content of policy {name:?} ({version}) from JSON")]
-    ContentDeserialize {
-        name:    String,
-        version: u64,
-        #[source]
-        err:     serde_json::Error,
-    },
+    ContentDeserialize { name: String, version: u64, source: serde_json::Error },
     /// Failed to serialize the given content as JSON.
     #[error("Failed to serialize the content of policy {name:?} as JSON")]
-    ContentSerialize {
-        name: String,
-        #[source]
-        err:  serde_json::Error,
-    },
+    ContentSerialize { name: String, source: serde_json::Error },
     /// Failed to deactivate an active version.
     #[error("Failed to deactivate active policy version {version} in backend database {:?}", path.display())]
-    DeactivateVersion {
-        path:    PathBuf,
-        version: u64,
-        #[source]
-        err:     diesel::result::Error,
-    },
+    DeactivateVersion { path: PathBuf, version: u64, source: diesel::result::Error },
     /// Failed to fetch the active version.
     #[error("Failed to get active version from backend database {:?}", path.display())]
-    GetActiveVersion {
-        path: PathBuf,
-        #[source]
-        err:  diesel::result::Error,
-    },
+    GetActiveVersion { path: PathBuf, source: diesel::result::Error },
     /// Failed to fetch the latest version.
     #[error("Failed to get latest version from backend database {:?}", path.display())]
-    GetLatestVersion {
-        path: PathBuf,
-        #[source]
-        err:  diesel::result::Error,
-    },
+    GetLatestVersion { path: PathBuf, source: diesel::result::Error },
     /// Failed to get a specific version.
     #[error("Failed to get version {version} from backend database {:?}", path.display())]
-    GetVersion {
-        path:    PathBuf,
-        version: u64,
-        #[source]
-        err:     diesel::result::Error,
-    },
+    GetVersion { path: PathBuf, version: u64, source: diesel::result::Error },
     /// Failed to get the list of versions.
     #[error("Failed to get the list of versions from backend database {:?}", path.display())]
-    GetVersions {
-        path: PathBuf,
-        #[source]
-        err:  diesel::result::Error,
-    },
+    GetVersions { path: PathBuf, source: diesel::result::Error },
     /// Failed to set the currently active policy.
     #[error("Failed to set version {version} as the active policy in backend database {:?}", path.display())]
-    SetActive {
-        path:    PathBuf,
-        version: u64,
-        #[source]
-        err:     diesel::result::Error,
-    },
+    SetActive { path: PathBuf, version: u64, source: diesel::result::Error },
     /// Failed to spawn a background blocking task.
     #[error("Failed to spawn a blocking task")]
-    SpawnBlocking {
-        #[source]
-        err: tokio::task::JoinError,
-    },
+    SpawnBlocking { source: tokio::task::JoinError },
     /// Failed to start a transaction with the database.
     #[error("Failed to start a transaction with the backend database")]
-    Transaction {
-        #[source]
-        err: diesel::result::Error,
-    },
+    Transaction { source: diesel::result::Error },
 }
 // Note: implemented to always error for transaction
 impl From<diesel::result::Error> for ConnectionError {
     #[inline]
-    fn from(value: diesel::result::Error) -> Self { Self::Transaction { err: value } }
+    fn from(value: diesel::result::Error) -> Self { Self::Transaction { source: value } }
 }
 
 
@@ -219,23 +145,15 @@ impl<C> SQLiteDatabase<C> {
             // Touch the database file
             if let Some(dir) = path.parent() {
                 if !dir.exists() {
-                    if let Err(err) = fs::create_dir(&dir).await {
-                        return Err(DatabaseError::DatabaseDirCreate { path: dir.into(), err });
-                    }
+                    fs::create_dir(&dir).await.map_err(|source| DatabaseError::DatabaseDirCreate { path: dir.into(), source })?;
                 }
             }
-            if let Err(err) = fs::File::create(&path).await {
-                return Err(DatabaseError::DatabaseCreate { path, err });
-            }
+            fs::File::create(&path).await.map_err(|source| DatabaseError::DatabaseCreate { path: path.clone(), source })?;
 
             // Apply them by connecting to the database
-            let mut conn: SqliteConnection = match SqliteConnection::establish(&path.display().to_string()) {
-                Ok(conn) => conn,
-                Err(err) => return Err(DatabaseError::ConnectDatabase { path, err }),
-            };
-            if let Err(err) = conn.run_pending_migrations(migrations) {
-                return Err(DatabaseError::MigrationsApply { path, err });
-            }
+            let mut conn = SqliteConnection::establish(&path.display().to_string())
+                .map_err(|source| DatabaseError::ConnectDatabase { path: path.clone(), source })?;
+            conn.run_pending_migrations(migrations).map_err(|source| DatabaseError::MigrationsApply { path: path.clone(), source })?;
         } else {
             debug!("Database {:?} already exists", path.display());
         }
@@ -243,10 +161,7 @@ impl<C> SQLiteDatabase<C> {
         // Create the pool
         debug!("Connecting to database {:?}...", path.display());
         let manager = Manager::new(path.display().to_string(), deadpool::Runtime::Tokio1);
-        let pool = match Pool::builder(manager).build() {
-            Ok(pool) => pool,
-            Err(err) => return Err(DatabaseError::PoolCreate { path, err }),
-        };
+        let pool = Pool::builder(manager).build().map_err(|source| DatabaseError::PoolCreate { path: path.clone(), source })?;
 
         // OK, now create self
         Ok(Self { path, pool, _content: PhantomData })
@@ -267,10 +182,8 @@ impl<C> SQLiteDatabase<C> {
     pub async fn with_migrations_from_dir_async(path: impl Into<PathBuf>, migrations_dir: impl AsRef<Path>) -> Result<Self, DatabaseError> {
         let migrations_dir: &Path = migrations_dir.as_ref();
         debug!("Reading migrations from {:?}...", migrations_dir.display());
-        let migrations: FileBasedMigrations = match FileBasedMigrations::find_migrations_directory_in_path(migrations_dir) {
-            Ok(migrations) => migrations,
-            Err(err) => return Err(DatabaseError::MigrationsFind { migrations_dir: migrations_dir.into(), err }),
-        };
+        let migrations = FileBasedMigrations::find_migrations_directory_in_path(migrations_dir)
+            .map_err(|source| DatabaseError::MigrationsFind { migrations_dir: migrations_dir.into(), source })?;
 
         // Delegate to the normal one
         Self::new_async(path, migrations).await
@@ -288,10 +201,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnector 
     async fn connect<'s>(&'s self, user: &'s specifications::metadata::User) -> Result<Self::Connection<'s>, Self::Error> {
         // Attempt to get a connection from the pool
         debug!("Creating new connection to SQLite database {:?}...", self.path.display());
-        match self.pool.get().await {
-            Ok(conn) => Ok(SQLiteConnection { path: &self.path, conn, user, _content: PhantomData }),
-            Err(err) => Err(DatabaseError::Connect { path: self.path.clone(), err }),
-        }
+        let conn = self.pool.get().await.map_err(|source| DatabaseError::Connect { path: self.path.clone(), source })?;
+
+        Ok(SQLiteConnection { path: &self.path, conn, user, _content: PhantomData })
     }
 }
 
@@ -324,27 +236,18 @@ impl<C> SQLiteConnection<'_, C> {
     where
         C2: LoadConnection<Backend = Sqlite>,
     {
-        use crate::schema::active_version::dsl::active_version;
-
         debug!("Fetching active version...");
-        match active_version
+        let mut result = crate::schema::active_version::dsl::active_version
             .limit(1)
             .order_by(crate::schema::active_version::dsl::activated_on.desc())
             .select(SqliteActiveVersion::as_select())
             .load(conn)
-        {
-            Ok(mut r) => match r.pop() {
-                Some(av) => {
-                    if av.deactivated_on.is_some() {
-                        Ok(None)
-                    } else {
-                        Ok(Some(av.version as u64))
-                    }
-                },
-                None => Ok(None),
-            },
-            Err(err) => Err(ConnectionError::GetActiveVersion { path: path.into(), err }),
-        }
+            .map_err(|source| ConnectionError::GetActiveVersion { path: path.into(), source })?;
+
+        let active_version =
+            result.pop().and_then(|last_version| if last_version.deactivated_on.is_some() { None } else { Some(last_version.version as u64) });
+
+        Ok(active_version)
     }
 }
 impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection for SQLiteConnection<'_, C> {
@@ -368,7 +271,7 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
                         .order_by(crate::schema::policies::dsl::created_at.desc())
                         .limit(1)
                         .load(conn)
-                        .map_err(|err| ConnectionError::GetLatestVersion { path: path.clone(), err })?
+                        .map_err(|source| ConnectionError::GetLatestVersion { path: path.clone(), source })?
                         .pop()
                         .unwrap_or(0);
 
@@ -377,10 +280,8 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
 
                     // Construct the policy itself
                     debug!("Adding new policy {next_version}...");
-                    let content = match serde_json::to_string(&content) {
-                        Ok(content) => content,
-                        Err(err) => return Err(ConnectionError::ContentSerialize { name: metadata.name, err }),
-                    };
+                    let content = serde_json::to_string(&content)
+                        .map_err(|source| ConnectionError::ContentSerialize { name: metadata.name.clone(), source })?;
                     let model = SqlitePolicy {
                         name: metadata.name,
                         description: metadata.description,
@@ -392,10 +293,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
                     };
 
                     // Submit it
-                    match diesel::insert_into(policies).values(&model).execute(conn) {
-                        Ok(_) => Ok(next_version as u64),
-                        Err(err) => Err(ConnectionError::AddVersion { path, err }),
-                    }
+                    diesel::insert_into(policies).values(&model).execute(conn).map_err(|source| ConnectionError::AddVersion { path, source })?;
+
+                    Ok(next_version as u64)
                 })
             })
             .await
@@ -424,9 +324,11 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
                     // Otherwise, build the model and submit it
                     debug!("Activating policy {version}...");
                     let model = SqliteActiveVersion::new(version as i64, user_id);
-                    if let Err(err) = diesel::insert_into(active_version).values(&model).execute(conn) {
-                        return Err(ConnectionError::SetActive { path, version, err });
-                    }
+                    diesel::insert_into(active_version).values(&model).execute(conn).map_err(|source| ConnectionError::SetActive {
+                        path,
+                        version,
+                        source,
+                    })?;
                     Ok(())
                 })
             })
@@ -455,13 +357,11 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
 
                     // If we found one, then update it
                     debug!("Deactivating active policy {av}...");
-                    if let Err(err) = diesel::update(active_version)
+                    diesel::update(active_version)
                         .filter(version.eq(av as i64))
                         .set((deactivated_on.eq(Utc::now().naive_local()), deactivated_by.eq(&user_id)))
                         .execute(conn)
-                    {
-                        return Err(ConnectionError::DeactivateVersion { path, version: av, err });
-                    }
+                        .map_err(|source| ConnectionError::DeactivateVersion { path, version: av, source })?;
                     Ok(())
                 })
             })
@@ -479,24 +379,23 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
         self.conn
             .interact(move |conn| {
                 debug!("Retrieving all policy versions...");
-                match policy::policies
+                let r = policy::policies
                     .order_by(crate::schema::policies::dsl::created_at.desc())
                     .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
                     .load::<(String, String, String, i64, String, NaiveDateTime)>(conn)
-                {
-                    Ok(r) => Ok(r
-                        .into_iter()
-                        .map(|(description, name, language, version, creator, created_at)| {
-                            (version as u64, Metadata {
-                                attached: AttachedMetadata { name, description, language },
-                                version:  version as u64,
-                                creator:  User { id: creator, name: "John Smith".into() },
-                                created:  created_at.and_utc(),
-                            })
+                    .map_err(|source| ConnectionError::GetVersions { path, source })?
+                    .into_iter()
+                    .map(|(description, name, language, version, creator, created_at)| {
+                        (version as u64, Metadata {
+                            attached: AttachedMetadata { name, description, language },
+                            version:  version as u64,
+                            creator:  User { id: creator, name: "John Smith".into() },
+                            created:  created_at.and_utc(),
                         })
-                        .collect()),
-                    Err(err) => Err(ConnectionError::GetVersions { path, err }),
-                }
+                    })
+                    .collect();
+
+                Ok(r)
             })
             .await
             .expect("database transaction should not panic")
@@ -518,24 +417,16 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
         let path = self.path.to_owned();
         self.conn
             .interact(move |conn| {
-                match active_version
+                let mut r = active_version
                     .limit(1)
                     .order_by(crate::schema::active_version::dsl::activated_on.desc())
                     .select(SqliteActiveVersion::as_select())
                     .load(conn)
-                {
-                    Ok(mut r) => match r.pop() {
-                        Some(av) => {
-                            if av.deactivated_on.is_some() {
-                                Ok(None)
-                            } else {
-                                Ok(Some(User { id: av.activated_by, name: "John Smith".into() }))
-                            }
-                        },
-                        None => Ok(None),
-                    },
-                    Err(err) => Err(ConnectionError::GetActiveVersion { path, err }),
-                }
+                    .map_err(|source| ConnectionError::GetActiveVersion { path, source })?;
+
+
+                Ok(r.pop()
+                    .and_then(|av| if av.deactivated_on.is_some() { None } else { Some(User { id: av.activated_by, name: "John Smith".into() }) }))
             })
             .await
             .expect("database transaction should not panic")
@@ -549,33 +440,34 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
         let path = self.path.to_owned();
         self.conn
             .interact(move |conn| {
-                match policy::policies
+                let mut r = match policy::policies
                     .limit(1)
                     .filter(crate::schema::policies::dsl::version.eq(version as i64))
                     .order_by(crate::schema::policies::dsl::created_at.desc())
                     .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
                     .load::<(String, String, String, i64, String, NaiveDateTime)>(conn)
                 {
-                    Ok(mut r) => {
-                        // Extract the version itself
-                        if r.is_empty() {
-                            return Ok(None);
-                        }
-                        let (description, name, language, version, creator, created_at) = r.remove(0);
+                    Ok(r) => r,
+                    Err(err) => {
+                        return match err {
+                            diesel::result::Error::NotFound => Ok(None),
+                            err => Err(ConnectionError::GetVersion { path, version, source: err }),
+                        };
+                    },
+                };
 
-                        // Done, return the thing
-                        Ok(Some(Metadata {
-                            attached: AttachedMetadata { name, description, language },
-                            created:  created_at.and_utc(),
-                            creator:  User { id: creator, name: "John Smith".into() },
-                            version:  version as u64,
-                        }))
-                    },
-                    Err(err) => match err {
-                        diesel::result::Error::NotFound => Ok(None),
-                        err => Err(ConnectionError::GetVersion { path, version, err }),
-                    },
-                }
+                // Extract the version itself
+                let Some((description, name, language, version, creator, created_at)) = r.pop() else {
+                    return Ok(None);
+                };
+
+                // Done, return the thing
+                Ok(Some(Metadata {
+                    attached: AttachedMetadata { name, description, language },
+                    created:  created_at.and_utc(),
+                    creator:  User { id: creator, name: "John Smith".into() },
+                    version:  version as u64,
+                }))
             })
             .await
             .expect("database transaction should not panic")
@@ -589,31 +481,31 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
         self.conn
             .interact(move |conn| {
                 debug!("Retrieving content for version {version}...");
-                match policy::policies
+                let mut r = match policy::policies
                     .limit(1)
                     .filter(crate::schema::policies::dsl::version.eq(version as i64))
                     .order_by(crate::schema::policies::dsl::created_at.desc())
                     .select((policy::name, policy::content))
                     .load::<(String, String)>(conn)
                 {
-                    Ok(mut r) => {
-                        // Extract the version itself
-                        if r.is_empty() {
-                            return Ok(None);
-                        }
-                        let (name, content) = r.remove(0);
+                    Ok(r) => r,
+                    Err(err) => {
+                        return match err {
+                            diesel::result::Error::NotFound => Ok(None),
+                            err => Err(ConnectionError::GetVersion { path, version, source: err }),
+                        };
+                    },
+                };
 
-                        // Deserialize the content
-                        match serde_json::from_str(&content) {
-                            Ok(content) => Ok(Some(content)),
-                            Err(err) => Err(ConnectionError::ContentDeserialize { name, version, err }),
-                        }
-                    },
-                    Err(err) => match err {
-                        diesel::result::Error::NotFound => Ok(None),
-                        err => Err(ConnectionError::GetVersion { path, version, err }),
-                    },
-                }
+                // Extract the version itself
+                let Some((name, content)) = r.pop() else {
+                    return Ok(None);
+                };
+
+                // Deserialize the content
+                let content = serde_json::from_str(&content).map_err(|source| ConnectionError::ContentDeserialize { name, version, source })?;
+
+                Ok(Some(content))
             })
             .await
             .expect("database transaction should not panic")

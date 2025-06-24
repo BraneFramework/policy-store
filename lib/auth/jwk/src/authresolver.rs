@@ -53,10 +53,7 @@ impl HttpError for KeyResolveErrorWrapper {
 pub enum ServerError {
     /// The embedded [`KeyResolver`] failed to resolve a key due to some server-side error.
     #[error("Failed to resolve key")]
-    KeyResolve {
-        #[source]
-        err: Box<dyn 'static + Error>,
-    },
+    KeyResolve { source: Box<dyn 'static + Error> },
 }
 // Allows key resolvers to use 'Infallible' as error type
 impl From<Infallible> for ServerError {
@@ -69,22 +66,13 @@ impl From<Infallible> for ServerError {
 pub enum ClientError {
     /// The given 'Authorization'-header did not contain valid UTF-8.
     #[error("Value of header {header:?} in request is non-UTF-8")]
-    AuthHeaderNonUtf8 {
-        header: &'static str,
-        #[source]
-        err:    http::header::ToStrError,
-    },
+    AuthHeaderNonUtf8 { header: &'static str, source: http::header::ToStrError },
     /// No 'Authorization' header found in request.
     #[error("Missing header {header:?} in ")]
     AuthHeaderNotFound { header: &'static str },
     /// The JWT extracted from the 'Authorization'-header was not a valid JWT.
     #[error("Illegal JWT {raw:?} in header {header:?} in request")]
-    IllegalJwt {
-        header: &'static str,
-        raw:    String,
-        #[source]
-        err:    jsonwebtoken::errors::Error,
-    },
+    IllegalJwt { header: &'static str, raw: String, source: jsonwebtoken::errors::Error },
     /// The JWT initiator claim had an invalid type.
     #[error("JWT initiator claim {claim:?} in header {header:?} has an invalid type: only strings and integers allowed (value: {value:?})")]
     JwtIllegalType { header: &'static str, claim: String, value: String },
@@ -93,17 +81,10 @@ pub enum ClientError {
     JwtMissingInitiatorClaim { header: &'static str, claim: String },
     /// Failed to validate the JWT in the given header.
     #[error("Failed to validate JWT in header {header:?}")]
-    JwtValidate {
-        header: &'static str,
-        #[source]
-        err:    jsonwebtoken::errors::Error,
-    },
+    JwtValidate { header: &'static str, source: jsonwebtoken::errors::Error },
     /// The embedded [`KeyResolver`] failed to resolve a key due to some client-side error.
     #[error("Failed to resolve key")]
-    KeyResolve {
-        #[source]
-        err: KeyResolveErrorWrapper,
-    },
+    KeyResolve { source: KeyResolveErrorWrapper },
     /// The given 'Authorization'-header was missing the 'Bearer '-part.
     #[error("Missing \"Bearer \" in header {header:?} in request (raw value: {raw:?})")]
     MissingBearer { header: &'static str, raw: String },
@@ -120,7 +101,7 @@ impl HttpError for ClientError {
             | JwtMissingInitiatorClaim { .. }
             | MissingBearer { .. } => StatusCode::BAD_REQUEST,
             JwtValidate { .. } => StatusCode::UNAUTHORIZED,
-            KeyResolve { err } => err.status_code(),
+            KeyResolve { source: err } => err.status_code(),
         }
     }
 }
@@ -150,15 +131,10 @@ impl From<Infallible> for ClientError {
 /// missing "Bearer" in the token field).
 fn extract_jwt<'h>(name: &'static str, value: Option<&'h HeaderValue>) -> Result<&'h str, ClientError> {
     // Get the header value as a string
-    let header_val: &str = match value {
-        Some(v) => match v.to_str() {
-            Ok(v) => v,
-            Err(err) => return Err(ClientError::AuthHeaderNonUtf8 { header: name, err }),
-        },
-        None => {
-            return Err(ClientError::AuthHeaderNotFound { header: name });
-        },
-    };
+    let header_val: &str = value
+        .ok_or_else(|| ClientError::AuthHeaderNotFound { header: name })?
+        .to_str()
+        .map_err(|source| ClientError::AuthHeaderNonUtf8 { header: name, source })?;
 
     // Split on the bearer thingy
     if header_val.len() < 7 || &header_val[..7] != "Bearer " {
@@ -213,15 +189,15 @@ where
         // Fetch the JWT from the header
         let raw_jwt = match extract_jwt(AUTHORIZATION.as_str(), headers.get(AUTHORIZATION.as_str())) {
             Ok(jwt) => jwt,
-            Err(err) => return Ok(Err(err)),
+            Err(source) => return Ok(Err(source)),
         };
         debug!("Received JWT: {raw_jwt:?}");
 
         // Fetch the header from the JWT
-        let header: Header = match jsonwebtoken::decode_header(raw_jwt).map_err(|err| ClientError::IllegalJwt {
+        let header: Header = match jsonwebtoken::decode_header(raw_jwt).map_err(|source| ClientError::IllegalJwt {
             header: AUTHORIZATION.as_str(),
             raw: raw_jwt.into(),
-            err,
+            source,
         }) {
             Ok(header) => header,
             Err(err) => return Ok(Err(err)),
@@ -238,7 +214,7 @@ where
         debug!("Validating JWT with {:?}...", header.alg);
         let result = match jsonwebtoken::decode::<HashMap<String, serde_json::Value>>(raw_jwt, &decoding_key, &validation) {
             Ok(res) => res,
-            Err(err) => return Ok(Err(ClientError::JwtValidate { header: AUTHORIZATION.as_str(), err })),
+            Err(source) => return Ok(Err(ClientError::JwtValidate { header: AUTHORIZATION.as_str(), source })),
         };
         debug!("Validating OK");
 

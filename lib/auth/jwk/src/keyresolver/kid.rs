@@ -35,33 +35,20 @@ use crate::KeyResolveErrorWrapper;
 pub enum ServerError {
     /// Failed to deserialize the keystore file.
     #[error("Failed to deserialize keystore file {:?}", path.display())]
-    FileDeserialize {
-        path: PathBuf,
-        #[source]
-        err:  serde_json::Error,
-    },
+    FileDeserialize { path: PathBuf, source: serde_json::Error },
     /// Failed to read the keystore to memory.
     #[error("Failed to read keystore file {:?}", path.display())]
-    FileRead {
-        path: PathBuf,
-        #[source]
-        err:  std::io::Error,
-    },
+    FileRead { path: PathBuf, source: std::io::Error },
     /// The given key was not valid Base64
     #[error("Given key {kid:?} in store file {:?} was not valid Base64", path.display())]
-    KeyDecodeBase64 {
-        path: PathBuf,
-        kid:  String,
-        #[source]
-        err:  base64ct::Error,
-    },
+    KeyDecodeBase64 { path: PathBuf, kid: String, source: base64ct::Error },
     /// The given key was in an unsupported format
     #[error("Given key {kid:?} in store file {:?} has an unsupported format (only octet keys are supported)", path.display())]
     KeyTypeUnsupprted { path: PathBuf, kid: String },
 }
 impl From<ServerError> for crate::authresolver::ServerError {
     #[inline]
-    fn from(value: ServerError) -> Self { Self::KeyResolve { err: Box::new(value) } }
+    fn from(value: ServerError) -> Self { Self::KeyResolve { source: Box::new(value) } }
 }
 
 /// Defines the errors originating from the [`KidResolver`] which are the client's fault (stupid
@@ -87,7 +74,7 @@ impl HttpError for ClientError {
 }
 impl From<ClientError> for crate::authresolver::ClientError {
     #[inline]
-    fn from(value: ClientError) -> Self { Self::KeyResolve { err: KeyResolveErrorWrapper(Box::new(value)) } }
+    fn from(value: ClientError) -> Self { Self::KeyResolve { source: KeyResolveErrorWrapper(Box::new(value)) } }
 }
 
 
@@ -116,8 +103,8 @@ impl KidResolver {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, ServerError> {
         // Read the contents of the file
         let path: &Path = path.as_ref();
-        let r = fs::read_to_string(path).map_err(|err| ServerError::FileRead { path: path.into(), err })?;
-        let keyfile: JwkSet = serde_json::from_str(&r).map_err(|err| ServerError::FileDeserialize { path: path.into(), err })?;
+        let r = fs::read_to_string(path).map_err(|source| ServerError::FileRead { path: path.into(), source })?;
+        let keyfile: JwkSet = serde_json::from_str(&r).map_err(|source| ServerError::FileDeserialize { path: path.into(), source })?;
 
         // Parse the keys as we go
         let mut store = HashMap::with_capacity(keyfile.keys.len());
@@ -127,14 +114,15 @@ impl KidResolver {
 
                 // Get the encoded binary value
                 let mut secret: [u8; 32] = [0; 32];
-                if let AlgorithmParameters::OctetKey(oct) = &key.algorithm {
-                    match base64ct::Base64Url::decode(&oct.value, &mut secret) {
-                        Ok(val) => val,
-                        Err(err) => return Err(ServerError::KeyDecodeBase64 { path: path.into(), kid: id, err }),
-                    }
-                } else {
+                let AlgorithmParameters::OctetKey(oct) = &key.algorithm else {
                     return Err(ServerError::KeyTypeUnsupprted { path: path.into(), kid: id });
                 };
+
+                base64ct::Base64Url::decode(&oct.value, &mut secret).map_err(|source| ServerError::KeyDecodeBase64 {
+                    path: path.into(),
+                    kid: id.clone(),
+                    source,
+                })?;
 
                 // Store it now
                 if store.insert(id.clone(), DecodingKey::from_secret(&secret)).is_some() {

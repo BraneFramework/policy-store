@@ -58,34 +58,28 @@ async fn download_request<T: DeserializeOwned>(request: Request) -> Result<T, (S
     let mut request = request.into_body().into_data_stream();
     while let Some(next) = request.next().await {
         // Unwrap the chunk
-        let next: Bytes = match next {
-            Ok(next) => next,
-            Err(err) => {
-                let msg: &'static str = "Failed to download request body";
-                error!("{}", trace!(("{msg}"), err));
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, msg.into()));
-            },
-        };
+        let next: Bytes = next.map_err(|source| {
+            let msg: &'static str = "Failed to download request body";
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg.into())
+        })?;
 
         // Append it
         req.extend(next);
     }
 
     // Deserialize the request contents
-    match serde_json::from_slice(&req) {
-        Ok(req) => Ok(req),
-        Err(err) => {
-            let error: String = format!(
-                "{}Raw body:\n{}\n{}\n{}\n",
-                trace!(("Failed to deserialize request body"), err),
-                (0..80).map(|_| '-').collect::<String>(),
-                String::from_utf8_lossy(&req),
-                (0..80).map(|_| '-').collect::<String>()
-            );
-            info!("{error}");
-            Err((StatusCode::BAD_REQUEST, error))
-        },
-    }
+    serde_json::from_slice(&req).map_err(|source| {
+        let error: String = format!(
+            "{}Raw body:\n{}\n{}\n{}\n",
+            trace!(("Failed to deserialize request body"), source),
+            (0..80).map(|_| '-').collect::<String>(),
+            String::from_utf8_lossy(&req),
+            (0..80).map(|_| '-').collect::<String>()
+        );
+        info!("{error}");
+        (StatusCode::BAD_REQUEST, error)
+    })
 }
 
 
@@ -110,34 +104,30 @@ where
     /// - 404 BAD REQUEST with the reason why we failed to parse the request; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
     #[instrument(name = "AxumServer::add_version", skip_all, fields(user = auth.id))]
-    pub async fn add_version(State(this): State<Arc<Self>>, Extension(auth): Extension<User>, request: Request) -> (StatusCode, String) {
+    pub async fn add_version(
+        State(this): State<Arc<Self>>,
+        Extension(auth): Extension<User>,
+        request: Request,
+    ) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Get the request
-        let req: AddVersionRequest<D::Content> = match download_request(request).await {
-            Ok(req) => req,
-            Err(res) => return res,
-        };
+        let req: AddVersionRequest<D::Content> = download_request(request).await?;
 
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
-                let msg: String = format!("Failed to add policy {}", req.metadata.name);
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
+            let msg: String = format!("Failed to add policy {}", req.metadata.name);
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
         let name: String = req.metadata.name.clone();
-        let version: u64 = match conn.add_version(req.metadata, req.contents).await {
-            Ok(res) => res,
-            Err(err) => {
-                let msg: String = format!("Failed to add policy {name}");
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
+        let version: u64 = conn.add_version(req.metadata, req.contents).await.map_err(|source| {
+            let msg: String = format!("Failed to add policy {name}");
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
 
         // Return the version
-        (StatusCode::OK, serde_json::to_string(&AddVersionResponse { version }).unwrap())
+        Ok((StatusCode::OK, serde_json::to_string(&AddVersionResponse { version }).unwrap()))
     }
 
     /// Handler for `PUT /v2/policies/active` (i.e., activating a policy).
@@ -150,30 +140,29 @@ where
     /// - 404 BAD REQUEST with the reason why we failed to parse the request; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
     #[instrument(name = "AxumServer::activate", skip_all, fields(user = auth.id))]
-    pub async fn activate(State(this): State<Arc<Self>>, Extension(auth): Extension<User>, request: Request) -> (StatusCode, String) {
+    pub async fn activate(
+        State(this): State<Arc<Self>>,
+        Extension(auth): Extension<User>,
+        request: Request,
+    ) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Get the request
-        let version: ActivateRequest = match download_request(request).await {
-            Ok(req) => req,
-            Err(res) => return res,
-        };
+        let version: ActivateRequest = download_request(request).await?;
 
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
-                let msg: String = format!("Failed to activate policy {}", version.version);
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
-        if let Err(err) = conn.activate(version.version).await {
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
             let msg: String = format!("Failed to activate policy {}", version.version);
-            error!("{}", trace!(("{msg}"), err));
-            return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-        };
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        conn.activate(version.version).await.map_err(|source| {
+            let msg: String = format!("Failed to activate policy {}", version.version);
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
 
         // Done
-        (StatusCode::OK, String::new())
+        Ok((StatusCode::OK, String::new()))
     }
 
     /// Handler for `DELETE /v2/policies/active` (i.e., deactivating a policy).
@@ -182,24 +171,21 @@ where
     /// - 200 OK; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
     #[instrument(name = "AxumServer::deactivate", skip_all, fields(user = auth.id))]
-    pub async fn deactivate(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
+    pub async fn deactivate(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
-                let msg: String = "Failed to deactivate any active policy".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
-        if let Err(err) = conn.deactivate().await {
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
             let msg: String = "Failed to deactivate any active policy".to_string();
-            error!("{}", trace!(("{msg}"), err));
-            return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-        };
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+        conn.deactivate().await.map_err(|source| {
+            let msg: String = "Failed to deactivate any active policy".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
 
         // Done
-        (StatusCode::OK, String::new())
+        Ok((StatusCode::OK, String::new()))
     }
 
 
@@ -211,34 +197,28 @@ where
     ///   or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
     #[instrument(name = "AxumServer::get_versions", skip_all, fields(user = auth.id))]
-    pub async fn get_versions(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
+    pub async fn get_versions(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
-                let msg: String = "Failed to deactivate any active policy".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
-        let versions: HashMap<u64, Metadata> = match conn.get_versions().await {
-            Ok(versions) => versions,
-            Err(err) => {
-                let msg: String = "Failed to deactivate any active policy".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
+            let msg: String = "Failed to deactivate any active policy".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        let versions: HashMap<u64, Metadata> = conn.get_versions().await.map_err(|source| {
+            let msg: String = "Failed to deactivate any active policy".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
 
         // Serialize the result
-        match serde_json::to_string(&GetVersionsResponse { versions }) {
-            Ok(versions) => (StatusCode::OK, versions),
-            Err(err) => {
-                let msg: String = "Failed to serialize result".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
-            },
-        }
+        let output = serde_json::to_string(&GetVersionsResponse { versions }).map_err(|source| {
+            let msg: String = "Failed to serialize result".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        Ok((StatusCode::OK, output))
     }
 
     /// Handler for `GET /v2/policies/active` (i.e., get active policy).
@@ -247,34 +227,31 @@ where
     /// - 200 OK with a [`GetActiveVersionResponse`] describing the version; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
     #[instrument(name = "AxumServer::get_active_version", skip_all, fields(user = auth.id))]
-    pub async fn get_active_version(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
+    pub async fn get_active_version(
+        State(this): State<Arc<Self>>,
+        Extension(auth): Extension<User>,
+    ) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
-                let msg: String = "Failed to get active policy".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
-        let version: Option<u64> = match conn.get_active_version().await {
-            Ok(version) => version,
-            Err(err) => {
-                let msg: String = "Failed to get active policy".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
+            let msg: String = "Failed to get active policy".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        let version: Option<u64> = conn.get_active_version().await.map_err(|source| {
+            let msg: String = "Failed to get active policy".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
 
         // Serialize the result
-        match serde_json::to_string(&GetActiveVersionResponse { version }) {
-            Ok(res) => (StatusCode::OK, res),
-            Err(err) => {
-                let msg: String = "Failed to serialize result".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
-            },
-        }
+        let res = serde_json::to_string(&GetActiveVersionResponse { version }).map_err(|source| {
+            let msg: String = "Failed to serialize result".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        Ok((StatusCode::OK, res))
     }
 
     /// Handler for `GET /v2/policies/active/activator` (i.e., get activator).
@@ -283,34 +260,31 @@ where
     /// - 200 OK with a [`GetActivatorResponse`] describing the version; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
     #[instrument(name = "AxumServer::get_activator", skip_all, fields(user = auth.id))]
-    pub async fn get_activator(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
+    pub async fn get_activator(
+        State(this): State<Arc<Self>>,
+        Extension(auth): Extension<User>,
+    ) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
-                let msg: String = "Failed to get activator".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
-        let user: Option<User> = match conn.get_activator().await {
-            Ok(user) => user,
-            Err(err) => {
-                let msg: String = "Failed to get activator".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
+            let msg: String = "Failed to get activator".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        let user: Option<User> = conn.get_activator().await.map_err(|source| {
+            let msg: String = "Failed to get activator".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
 
         // Serialize the result
-        match serde_json::to_string(&GetActivatorResponse { user }) {
-            Ok(versions) => (StatusCode::OK, versions),
-            Err(err) => {
-                let msg: String = "Failed to serialize result".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
-            },
-        }
+        let activator = serde_json::to_string(&GetActivatorResponse { user }).map_err(|source| {
+            let msg: String = "Failed to serialize result".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        Ok((StatusCode::OK, activator))
     }
 
     /// Handler for `GET /v2/policy/:version` (i.e., get version metadata).
@@ -324,37 +298,32 @@ where
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         Path(version): Path<u64>,
-    ) -> (StatusCode, String) {
+    ) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
+            let msg: String = "Failed to get policy metadata".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        let metadata: Metadata = conn
+            .get_version_metadata(version)
+            .await
+            .map_err(|source| {
                 let msg: String = "Failed to get policy metadata".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
-        let metadata: Metadata = match conn.get_version_metadata(version).await {
-            Ok(Some(metadata)) => metadata,
-            Ok(None) => {
-                return (StatusCode::NOT_FOUND, String::new());
-            },
-            Err(err) => {
-                let msg: String = "Failed to get policy metadata".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
+                error!("{}", trace!(("{msg}"), source));
+                (StatusCode::INTERNAL_SERVER_ERROR, msg)
+            })?
+            .ok_or_else(|| (StatusCode::NOT_FOUND, String::new()))?;
 
         // Serialize the result
-        match serde_json::to_string(&GetVersionMetadataResponse { metadata }) {
-            Ok(versions) => (StatusCode::OK, versions),
-            Err(err) => {
-                let msg: String = "Failed to serialize result".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
-            },
-        }
+        let metadata = serde_json::to_string(&GetVersionMetadataResponse { metadata }).map_err(|source| {
+            let msg: String = "Failed to serialize result".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        Ok((StatusCode::OK, metadata))
     }
 
     /// Handler for `GET /v2/policy/:version/content` (i.e., get version content).
@@ -369,36 +338,31 @@ where
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         Path(version): Path<u64>,
-    ) -> (StatusCode, String) {
+    ) -> Result<(StatusCode, String), (StatusCode, String)> {
         // Just try to send it to the DB
-        let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
-            Ok(conn) => conn,
-            Err(err) => {
+        let mut conn: D::Connection<'_> = this.data.connect(&auth).await.map_err(|source| {
+            let msg: String = "Failed to get policy content".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        let content: D::Content = conn
+            .get_version_content(version)
+            .await
+            .map_err(|source| {
                 let msg: String = "Failed to get policy content".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
-        let content: D::Content = match conn.get_version_content(version).await {
-            Ok(Some(content)) => content,
-            Ok(None) => {
-                return (StatusCode::NOT_FOUND, String::new());
-            },
-            Err(err) => {
-                let msg: String = "Failed to get policy content".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                return (StatusCode::INTERNAL_SERVER_ERROR, msg);
-            },
-        };
+                error!("{}", trace!(("{msg}"), source));
+                (StatusCode::INTERNAL_SERVER_ERROR, msg)
+            })?
+            .ok_or_else(|| (StatusCode::NOT_FOUND, String::new()))?;
 
         // Serialize the result
-        match serde_json::to_string(&GetVersionContentResponse { content }) {
-            Ok(content) => (StatusCode::OK, content),
-            Err(err) => {
-                let msg: String = "Failed to serialize result".to_string();
-                error!("{}", trace!(("{msg}"), err));
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
-            },
-        }
+        let content = serde_json::to_string(&GetVersionContentResponse { content }).map_err(|source| {
+            let msg: String = "Failed to serialize result".to_string();
+            error!("{}", trace!(("{msg}"), source));
+            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        })?;
+
+        Ok((StatusCode::OK, content))
     }
 }
