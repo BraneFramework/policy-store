@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
-use std::future::Future;
 
 use http::header::AUTHORIZATION;
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -207,58 +206,53 @@ where
     type ServerError = ServerError;
 
 
-    fn authorize(
-        &self,
-        headers: &HeaderMap<HeaderValue>,
-    ) -> impl Send + Future<Output = Result<Result<Self::Context, Self::ClientError>, Self::ServerError>> {
-        async move {
-            let _span = span!(Level::INFO, "JwkResolver::authorize");
-            info!("Handling JWT authentication for incoming request");
+    async fn authorize(&self, headers: &HeaderMap<HeaderValue>) -> Result<Result<Self::Context, Self::ClientError>, Self::ServerError> {
+        let _span = span!(Level::INFO, "JwkResolver::authorize");
+        info!("Handling JWT authentication for incoming request");
 
-            // Fetch the JWT from the header
-            let raw_jwt = match extract_jwt(AUTHORIZATION.as_str(), headers.get(AUTHORIZATION.as_str())) {
-                Ok(jwt) => jwt,
-                Err(err) => return Ok(Err(err)),
-            };
-            debug!("Received JWT: {raw_jwt:?}");
+        // Fetch the JWT from the header
+        let raw_jwt = match extract_jwt(AUTHORIZATION.as_str(), headers.get(AUTHORIZATION.as_str())) {
+            Ok(jwt) => jwt,
+            Err(err) => return Ok(Err(err)),
+        };
+        debug!("Received JWT: {raw_jwt:?}");
 
-            // Fetch the header from the JWT
-            let header: Header = match jsonwebtoken::decode_header(raw_jwt).map_err(|err| ClientError::IllegalJwt {
-                header: AUTHORIZATION.as_str(),
-                raw: raw_jwt.into(),
-                err,
-            }) {
-                Ok(header) => header,
-                Err(err) => return Ok(Err(err)),
-            };
-            debug!("JWT header: {header:?}");
+        // Fetch the header from the JWT
+        let header: Header = match jsonwebtoken::decode_header(raw_jwt).map_err(|err| ClientError::IllegalJwt {
+            header: AUTHORIZATION.as_str(),
+            raw: raw_jwt.into(),
+            err,
+        }) {
+            Ok(header) => header,
+            Err(err) => return Ok(Err(err)),
+        };
+        debug!("JWT header: {header:?}");
 
-            // Check if the key makes sense
-            debug!("Resolving key in keystore...");
-            let decoding_key = match self.resolver.resolve_key(&header).await? {
-                Ok(key) => key,
-                Err(err) => return Ok(Err(err.into())),
-            };
-            let validation = Validation::new(header.alg);
-            debug!("Validating JWT with {:?}...", header.alg);
-            let result = match jsonwebtoken::decode::<HashMap<String, serde_json::Value>>(raw_jwt, &decoding_key, &validation) {
-                Ok(res) => res,
-                Err(err) => return Ok(Err(ClientError::JwtValidate { header: AUTHORIZATION.as_str(), err })),
-            };
-            debug!("Validating OK");
+        // Check if the key makes sense
+        debug!("Resolving key in keystore...");
+        let decoding_key = match self.resolver.resolve_key(&header).await? {
+            Ok(key) => key,
+            Err(err) => return Ok(Err(err.into())),
+        };
+        let validation = Validation::new(header.alg);
+        debug!("Validating JWT with {:?}...", header.alg);
+        let result = match jsonwebtoken::decode::<HashMap<String, serde_json::Value>>(raw_jwt, &decoding_key, &validation) {
+            Ok(res) => res,
+            Err(err) => return Ok(Err(ClientError::JwtValidate { header: AUTHORIZATION.as_str(), err })),
+        };
+        debug!("Validating OK");
 
-            match result.claims.get(&self.initiator_claim) {
-                Some(initiator) => match initiator {
-                    serde_json::Value::Number(v) => Ok(Ok(User { id: v.to_string(), name: "John Smith".into() })),
-                    serde_json::Value::String(v) => Ok(Ok(User { id: v.clone(), name: "John Smith".into() })),
-                    other => Ok(Err(ClientError::JwtIllegalType {
-                        header: AUTHORIZATION.as_str(),
-                        claim:  self.initiator_claim.clone(),
-                        value:  format!("{other:?}"),
-                    })),
-                },
-                None => Ok(Err(ClientError::JwtMissingInitiatorClaim { header: AUTHORIZATION.as_str(), claim: self.initiator_claim.clone() })),
-            }
+        match result.claims.get(&self.initiator_claim) {
+            Some(initiator) => match initiator {
+                serde_json::Value::Number(v) => Ok(Ok(User { id: v.to_string(), name: "John Smith".into() })),
+                serde_json::Value::String(v) => Ok(Ok(User { id: v.clone(), name: "John Smith".into() })),
+                other => Ok(Err(ClientError::JwtIllegalType {
+                    header: AUTHORIZATION.as_str(),
+                    claim:  self.initiator_claim.clone(),
+                    value:  format!("{other:?}"),
+                })),
+            },
+            None => Ok(Err(ClientError::JwtMissingInitiatorClaim { header: AUTHORIZATION.as_str(), claim: self.initiator_claim.clone() })),
         }
     }
 }

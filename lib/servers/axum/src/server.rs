@@ -12,7 +12,6 @@
 //!   Defines the API itself.
 //
 
-use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -216,14 +215,12 @@ where
 {
     type Error = Error;
 
-    fn serve(self) -> impl Future<Output = Result<(), Self::Error>> {
+    async fn serve(self) -> Result<(), Self::Error> {
         let this: Arc<Self> = Arc::new(self);
-        async move {
-            let _span = span!(Level::INFO, "AxumServer::serve");
+        let _span = span!(Level::INFO, "AxumServer::serve");
 
-            // Simply depend on the two halves of the equation
-            let router: Router<()> = Self::routes(this.clone());
-            Self::serve_router(this, router).await
-        }
+        // Simply depend on the two halves of the equation
+        let router: Router<()> = Self::routes(this.clone());
+        Self::serve_router(this, router).await
     }
 }

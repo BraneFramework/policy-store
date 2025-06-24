@@ -15,7 +15,6 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs;
-use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use base64ct::Encoding as _;
@@ -157,24 +156,22 @@ impl KeyResolver for KidResolver {
     type ServerError = Infallible;
 
 
-    fn resolve_key(&self, header: &Header) -> impl Send + Sync + Future<Output = Result<Result<DecodingKey, Self::ClientError>, Self::ServerError>> {
-        async move {
-            let _span = span!(Level::INFO, "KidResolver::resolve_key");
+    async fn resolve_key(&self, header: &Header) -> Result<Result<DecodingKey, Self::ClientError>, Self::ServerError> {
+        let _span = span!(Level::INFO, "KidResolver::resolve_key");
 
-            // Unpack the key ID in the header
-            let kid: &str = match header.kid.as_ref() {
-                Some(kid) => kid,
-                None => return Ok(Err(ClientError::HeaderKidNotFound)),
-            };
+        // Unpack the key ID in the header
+        let kid: &str = match header.kid.as_ref() {
+            Some(kid) => kid,
+            None => return Ok(Err(ClientError::HeaderKidNotFound)),
+        };
 
-            // Get the key
-            match self.store.get(kid) {
-                Some(key) => {
-                    debug!("Resolved key with ID {kid:?}");
-                    Ok(Ok(key.clone()))
-                },
-                None => Ok(Err(ClientError::UnknownKeyId { kid: kid.into() })),
-            }
+        // Get the key
+        match self.store.get(kid) {
+            Some(key) => {
+                debug!("Resolved key with ID {kid:?}");
+                Ok(Ok(key.clone()))
+            },
+            None => Ok(Err(ClientError::UnknownKeyId { kid: kid.into() })),
         }
     }
 }

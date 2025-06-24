@@ -13,7 +13,6 @@
 //
 
 use std::convert::Infallible;
-use std::future::Future;
 
 use http::HeaderMap;
 use specifications::authresolver::AuthResolver;
@@ -42,7 +41,7 @@ impl AuthResolver for NoOpResolver {
     type ServerError = Infallible;
 
     #[inline]
-    fn authorize(&self, _headers: &HeaderMap) -> impl Send + Future<Output = Result<Result<Self::Context, Self::ClientError>, Self::ServerError>> {
-        async move { Ok(Ok(User { id: "johnsmith".into(), name: "John Smith".into() })) }
+    async fn authorize(&self, _headers: &HeaderMap) -> Result<Result<Self::Context, Self::ClientError>, Self::ServerError> {
+        Ok(Ok(User { id: "johnsmith".into(), name: "John Smith".into() }))
     }
 }
