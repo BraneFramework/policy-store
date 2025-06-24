@@ -137,12 +137,7 @@ fn extract_jwt<'h>(name: &'static str, value: Option<&'h HeaderValue>) -> Result
         .map_err(|source| ClientError::AuthHeaderNonUtf8 { header: name, source })?;
 
     // Split on the bearer thingy
-    if header_val.len() < 7 || &header_val[..7] != "Bearer " {
-        return Err(ClientError::MissingBearer { header: name, raw: header_val.into() });
-    }
-
-    // OK, let's go
-    Ok(&header_val[7..])
+    header_val.strip_prefix("Bearer ").ok_or_else(|| ClientError::MissingBearer { header: name, raw: header_val.into() })
 }
 
 
