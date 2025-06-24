@@ -23,7 +23,7 @@ use jsonwebtoken::jwk::{AlgorithmParameters, JwkSet};
 use jsonwebtoken::{DecodingKey, Header};
 use specifications::authresolver::HttpError;
 use thiserror::Error;
-use tracing::{Level, debug, span, warn};
+use tracing::{debug, instrument, warn};
 
 use super::KeyResolver;
 use crate::KeyResolveErrorWrapper;
@@ -112,9 +112,8 @@ impl KidResolver {
     /// # Errors
     /// This function can fail if it failed to read the file (e.g., it does not exist) or if it
     /// wasn't parsable as a JSON key set.
+    #[instrument(name = "KidResolver::new", skip_all)]
     pub fn new(path: impl AsRef<Path>) -> Result<Self, ServerError> {
-        let _span = span!(Level::INFO, "KidResolver::new");
-
         // Read the contents of the file
         let path: &Path = path.as_ref();
         let r = fs::read_to_string(path).map_err(|err| ServerError::FileRead { path: path.into(), err })?;
@@ -156,9 +155,8 @@ impl KeyResolver for KidResolver {
     type ServerError = Infallible;
 
 
+    #[instrument(name = "KidResolver::resolve_key", skip_all)]
     async fn resolve_key(&self, header: &Header) -> Result<Result<DecodingKey, Self::ClientError>, Self::ServerError> {
-        let _span = span!(Level::INFO, "KidResolver::resolve_key");
-
         // Unpack the key ID in the header
         let kid: &str = match header.kid.as_ref() {
             Some(kid) => kid,

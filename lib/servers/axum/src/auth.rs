@@ -24,7 +24,7 @@ use error_trace::ErrorTrace as _;
 use specifications::AuthResolver;
 use specifications::authresolver::HttpError;
 use thiserror::Error;
-use tracing::{Level, error, info, span};
+use tracing::{error, info, instrument};
 
 use crate::server::AxumServer;
 
@@ -60,9 +60,8 @@ where
     A::ClientError: 'static,
     A::ServerError: 'static,
 {
+    #[instrument(name = "AxumServer::check", skip_all, fields(client=client.to_string()))]
     pub async fn check(State(context): State<Arc<Self>>, ConnectInfo(client): ConnectInfo<SocketAddr>, mut request: Request, next: Next) -> Response {
-        let _span = span!(Level::INFO, "AxumServer::check", client = client.to_string());
-
         // Do the auth thingy
         let user: A::Context = match context.auth.authorize(request.headers()).await {
             Ok(Ok(user)) => user,

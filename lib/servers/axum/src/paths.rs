@@ -26,7 +26,7 @@ use serde::de::DeserializeOwned;
 use specifications::DatabaseConnector;
 use specifications::databaseconn::DatabaseConnection;
 use specifications::metadata::{Metadata, User};
-use tracing::{Level, error, info, span};
+use tracing::{error, info, instrument};
 
 use crate::server::AxumServer;
 use crate::spec::{
@@ -109,9 +109,8 @@ where
     /// - 200 OK with an [`AddVersionResponse`] detailling the version number of the new policy;
     /// - 404 BAD REQUEST with the reason why we failed to parse the request; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::add_version", skip_all, fields(user = auth.id))]
     pub async fn add_version(State(this): State<Arc<Self>>, Extension(auth): Extension<User>, request: Request) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::add_version", user = auth.id);
-
         // Get the request
         let req: AddVersionRequest<D::Content> = match download_request(request).await {
             Ok(req) => req,
@@ -150,9 +149,8 @@ where
     /// - 200 OK;
     /// - 404 BAD REQUEST with the reason why we failed to parse the request; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::activate", skip_all, fields(user = auth.id))]
     pub async fn activate(State(this): State<Arc<Self>>, Extension(auth): Extension<User>, request: Request) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::activate", user = auth.id);
-
         // Get the request
         let version: ActivateRequest = match download_request(request).await {
             Ok(req) => req,
@@ -183,9 +181,8 @@ where
     /// Out:
     /// - 200 OK; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::deactivate", skip_all, fields(user = auth.id))]
     pub async fn deactivate(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::deactivate", user = auth.id);
-
         // Just try to send it to the DB
         let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
             Ok(conn) => conn,
@@ -213,9 +210,8 @@ where
     /// - 200 OK with an [`GetVersionsResponse`] mapping version numbers ([`u64`]) to [`Metadata`];
     ///   or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::get_versions", skip_all, fields(user = auth.id))]
     pub async fn get_versions(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::get_versions", user = auth.id);
-
         // Just try to send it to the DB
         let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
             Ok(conn) => conn,
@@ -250,9 +246,8 @@ where
     /// Out:
     /// - 200 OK with a [`GetActiveVersionResponse`] describing the version; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::get_active_version", skip_all, fields(user = auth.id))]
     pub async fn get_active_version(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::get_active_version", user = auth.id);
-
         // Just try to send it to the DB
         let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
             Ok(conn) => conn,
@@ -287,9 +282,8 @@ where
     /// Out:
     /// - 200 OK with a [`GetActivatorResponse`] describing the version; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::get_activator", skip_all, fields(user = auth.id))]
     pub async fn get_activator(State(this): State<Arc<Self>>, Extension(auth): Extension<User>) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::get_activator", user = auth.id);
-
         // Just try to send it to the DB
         let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
             Ok(conn) => conn,
@@ -325,13 +319,12 @@ where
     /// - 200 OK with a [`GetVersionMetadataResponse`] describing the version's metadata;
     /// - 404 NOT FOUND if there was no policy with version `:version`; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::get_version_metadata", skip_all, fields(user = auth.id))]
     pub async fn get_version_metadata(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         Path(version): Path<u64>,
     ) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::get_version_metadata", user = auth.id);
-
         // Just try to send it to the DB
         let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
             Ok(conn) => conn,
@@ -371,13 +364,12 @@ where
     ///   describing the version's content;
     /// - 404 NOT FOUND if there was no policy with version `:version`; or
     /// - 500 INTERNAL SERVER ERROR with a message what went wrong.
+    #[instrument(name = "AxumServer::get_version_content", skip_all, fields(user = auth.id))]
     pub async fn get_version_content(
         State(this): State<Arc<Self>>,
         Extension(auth): Extension<User>,
         Path(version): Path<u64>,
     ) -> (StatusCode, String) {
-        let _span = span!(Level::INFO, "AxumServer::get_version_content", user = auth.id);
-
         // Just try to send it to the DB
         let mut conn: D::Connection<'_> = match this.data.connect(&auth).await {
             Ok(conn) => conn,

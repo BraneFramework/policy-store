@@ -24,7 +24,7 @@ use specifications::AuthResolver;
 use specifications::authresolver::HttpError;
 use specifications::metadata::User;
 use thiserror::Error;
-use tracing::{Level, debug, info, span};
+use tracing::{debug, info, instrument};
 
 use crate::keyresolver::KeyResolver;
 
@@ -206,8 +206,8 @@ where
     type ServerError = ServerError;
 
 
+    #[instrument(name = "JwkResolver::authorize", skip_all)]
     async fn authorize(&self, headers: &HeaderMap<HeaderValue>) -> Result<Result<Self::Context, Self::ClientError>, Self::ServerError> {
-        let _span = span!(Level::INFO, "JwkResolver::authorize");
         info!("Handling JWT authentication for incoming request");
 
         // Fetch the JWT from the header

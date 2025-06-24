@@ -28,8 +28,7 @@ use specifications::{AuthResolver, DatabaseConnector, Server};
 use thiserror::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tower_service::Service as _;
-use tracing::field::Empty;
-use tracing::{Level, debug, error, info, span};
+use tracing::{Span, debug, error, info, instrument};
 
 use crate::spec::{
     ACTIVATE_PATH, ADD_VERSION_PATH, DEACTIVATE_PATH, GET_ACTIVATOR_VERSION_PATH, GET_ACTIVE_VERSION_PATH, GET_VERSION_CONTENT_PATH,
@@ -95,8 +94,6 @@ where
     /// # Returns
     /// A [`Router`] that can be extended with additional paths, if preferred.
     pub fn routes(this: Arc<Self>) -> Router<()> {
-        let _span = span!(Level::INFO, "AxumServer::routes");
-
         // First, define the axum paths
         debug!("Building axum paths...");
         let add_version: Router = Router::new()
@@ -154,8 +151,8 @@ impl<A, D> AxumServer<A, D> {
     ///
     /// # Errors
     /// This function may fail if it failed to bind the server at the internal address.
+    #[instrument(name = "AxumServer::serve_router", skip_all, fields(state = "starting", client))]
     pub async fn serve_router(this: Arc<Self>, router: Router<()>) -> Result<(), Error> {
-        let span = span!(Level::INFO, "AxumServer::serve_router", state = "starting", client = Empty);
         let router: IntoMakeServiceWithConnectInfo<Router, SocketAddr> = Router::<()>::into_make_service_with_connect_info(router);
 
         // Bind the TCP Listener
@@ -167,7 +164,7 @@ impl<A, D> AxumServer<A, D> {
 
         // Accept new connections!
         info!("Initialization OK, awaiting connections...");
-        span.record("state", "running");
+        Span::current().record("state", "running");
         loop {
             // Accept a new connection
             let (socket, remote_addr): (TcpStream, SocketAddr) = match listener.accept().await {
@@ -177,7 +174,8 @@ impl<A, D> AxumServer<A, D> {
                     continue;
                 },
             };
-            span.record("client", remote_addr.to_string());
+
+            Span::current().record("client", remote_addr.to_string());
 
             // Move the rest to a separate task
             let router: IntoMakeServiceWithConnectInfo<_, _> = router.clone();
@@ -215,9 +213,9 @@ where
 {
     type Error = Error;
 
+    #[instrument("AxumServer::serve", skip_all)]
     async fn serve(self) -> Result<(), Self::Error> {
         let this: Arc<Self> = Arc::new(self);
-        let _span = span!(Level::INFO, "AxumServer::serve");
 
         // Simply depend on the two halves of the equation
         let router: Router<()> = Self::routes(this.clone());

@@ -31,7 +31,7 @@ use specifications::databaseconn::DatabaseConnection;
 use specifications::metadata::{AttachedMetadata, Metadata, User};
 use thiserror::Error;
 use tokio::fs;
-use tracing::{Level, debug, info, span};
+use tracing::{debug, info, instrument};
 
 use crate::models::{SqliteActiveVersion, SqlitePolicy};
 
@@ -343,7 +343,7 @@ impl<C> SQLiteConnection<'_, C> {
                 },
                 None => Ok(None),
             },
-            Err(err) => Err(ConnectionError::GetActiveVersion { path, err }),
+            Err(err) => Err(ConnectionError::GetActiveVersion { path: path.into(), err }),
         }
     }
 }
@@ -353,10 +353,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
 
 
     // Mutable
+    #[instrument(name = "SQLiteConnection::add_version", skip_all, fields(policy = metadata.name))]
     async fn add_version(&mut self, metadata: AttachedMetadata, content: Self::Content) -> Result<u64, Self::Error> {
         use crate::schema::policies::dsl::policies;
-
-        let span = span!(Level::INFO, "SQLiteConnection::add_version", policy = metadata.name,);
 
         debug!("Starting transaction...");
         let user_id = self.user.id.clone();
@@ -364,9 +363,6 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
         self.conn
             .interact(move |conn| {
                 conn.exclusive_transaction(|conn| -> Result<u64, Self::Error> {
-                    // Trick the compiler into moving the span too
-                    let _span = span;
-
                     debug!("Retrieving latest policy version...");
                     let latest: i64 = policies::select(policies, crate::schema::policies::dsl::version)
                         .order_by(crate::schema::policies::dsl::created_at.desc())
@@ -406,10 +402,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
             .expect("database transaction should not panic")
     }
 
+    #[instrument(name = "SQLiteConnection::activate", skip(self))]
     async fn activate(&mut self, version: u64) -> Result<(), Self::Error> {
         use crate::schema::active_version::dsl::active_version;
-
-        let span = span!(Level::INFO, "SQLiteConnection::activate", version = version);
 
         debug!("Starting transaction...");
         let path = self.path.to_owned();
@@ -417,9 +412,6 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
         self.conn
             .interact(move |conn| {
                 conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
-                    // Trick the compiler into moving the span too
-                    let _span = span;
-
                     // Get the information about what to activate
                     let av = Self::_get_active_version(&path, conn)?;
 
@@ -442,10 +434,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
             .expect("database transaction should not panic")
     }
 
+    #[instrument(name = "SQLiteConnection::deactivate", skip(self))]
     async fn deactivate(&mut self) -> Result<(), Self::Error> {
         use crate::schema::active_version::dsl::{active_version, deactivated_by, deactivated_on, version};
-
-        let _span = span!(Level::INFO, "SQLiteConnection::deactivate");
 
         debug!("Starting transaction...");
         let path = self.path.to_owned();
@@ -480,10 +471,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
 
 
     // Immutable
+    #[instrument(name = "SQLiteConnection::get_versions", skip(self))]
     async fn get_versions(&mut self) -> Result<HashMap<u64, Metadata>, Self::Error> {
         use crate::schema::policies::dsl as policy;
-
-        let _span = span!(Level::INFO, "SQLiteConnection::get_versions");
 
         let path = self.path.to_owned();
         self.conn
@@ -512,18 +502,16 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
             .expect("database transaction should not panic")
     }
 
+    #[instrument(name = "SQLiteConnection::get_active", skip(self))]
     async fn get_active_version(&mut self) -> Result<Option<u64>, Self::Error> {
-        let _span = span!(Level::INFO, "SQLiteConnection::get_active");
-
         // Do a call to get the active, if any
         let path = self.path.to_owned();
         self.conn.interact(move |conn| Self::_get_active_version(&path, conn)).await.expect("database transaction should not panic")
     }
 
+    #[instrument(name = "SQLiteConnection::get_active", skip(self))]
     async fn get_activator(&mut self) -> Result<Option<User>, Self::Error> {
         use crate::schema::active_version::dsl::active_version;
-
-        let _span = span!(Level::INFO, "SQLiteConnection::get_active");
 
         // Do a call to get the active, if any
         debug!("Fetching active version...");
@@ -553,10 +541,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
             .expect("database transaction should not panic")
     }
 
+    #[instrument(name = "SQLiteConnection::get_version_metadata", skip(self))]
     async fn get_version_metadata(&mut self, version: u64) -> Result<Option<Metadata>, Self::Error> {
         use crate::schema::policies::dsl as policy;
-
-        let _span = span!(Level::INFO, "SQLiteConnection::get_version_metadata", version = version);
 
         debug!("Retrieving metadata for version {version}...");
         let path = self.path.to_owned();
@@ -594,10 +581,9 @@ impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection
             .expect("database transaction should not panic")
     }
 
+    #[instrument(name = "SQLiteConnection::get_version_content", skip_all)]
     async fn get_version_content(&mut self, version: u64) -> Result<Option<Self::Content>, Self::Error> {
         use crate::schema::policies::dsl as policy;
-
-        let _span = span!(Level::INFO, "SQLiteConnection::get_version_content", version = version);
 
         let path = self.path.to_owned();
         self.conn
