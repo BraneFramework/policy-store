@@ -18,9 +18,10 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use chrono::{NaiveDateTime, Utc};
+use deadpool::managed::Object;
+use deadpool_diesel::{Manager, Pool, PoolError};
 use diesel::connection::LoadConnection;
 use diesel::migration::MigrationSource;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::sqlite::Sqlite;
 use diesel::{Connection as _, ExpressionMethods as _, QueryDsl as _, RunQueryDsl as _, SelectableHelper as _, SqliteConnection};
 use diesel_migrations::{FileBasedMigrations, MigrationHarness as _};
@@ -45,7 +46,7 @@ pub enum DatabaseError {
     Connect {
         path: PathBuf,
         #[source]
-        err:  diesel::r2d2::PoolError,
+        err:  PoolError,
     },
     /// Failed to connect to the database when creating it.
     #[error("Failed to first-time connect to backend database {:?}", path.display())]
@@ -87,7 +88,7 @@ pub enum DatabaseError {
     PoolCreate {
         path: PathBuf,
         #[source]
-        err:  diesel::r2d2::PoolError,
+        err:  deadpool::managed::BuildError,
     },
 }
 
@@ -191,7 +192,7 @@ pub struct SQLiteDatabase<C> {
     /// The path to the file that we represent. Only retained during runtime for debugging.
     path:     PathBuf,
     /// The pool of connections.
-    pool:     Pool<ConnectionManager<SqliteConnection>>,
+    pool:     Pool<deadpool_diesel::Manager<SqliteConnection>>,
     /// Remembers the type of content used.
     _content: PhantomData<C>,
 }
@@ -242,7 +243,8 @@ impl<C> SQLiteDatabase<C> {
 
         // Create the pool
         debug!("Connecting to database {:?}...", path.display());
-        let pool: Pool<_> = match Pool::new(ConnectionManager::new(path.display().to_string())) {
+        let manager = Manager::new(path.display().to_string(), deadpool::Runtime::Tokio1);
+        let pool = match Pool::builder(manager).build() {
             Ok(pool) => pool,
             Err(err) => return Err(DatabaseError::PoolCreate { path, err }),
         };
@@ -275,7 +277,7 @@ impl<C> SQLiteDatabase<C> {
         Self::new_async(path, migrations).await
     }
 }
-impl<C: Send + Sync + DeserializeOwned + Serialize> DatabaseConnector for SQLiteDatabase<C> {
+impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnector for SQLiteDatabase<C> {
     type Connection<'s>
         = SQLiteConnection<'s, C>
     where
@@ -288,7 +290,7 @@ impl<C: Send + Sync + DeserializeOwned + Serialize> DatabaseConnector for SQLite
         async move {
             // Attempt to get a connection from the pool
             debug!("Creating new connection to SQLite database {:?}...", self.path.display());
-            match self.pool.get() {
+            match self.pool.get().await {
                 Ok(conn) => Ok(SQLiteConnection { path: &self.path, conn, user, _content: PhantomData }),
                 Err(err) => Err(DatabaseError::Connect { path: self.path.clone(), err }),
             }
@@ -303,7 +305,7 @@ pub struct SQLiteConnection<'a, C> {
     /// The path to the file that we represent. Only retained during runtime for debugging.
     path:     &'a Path,
     /// The connection we wrap.
-    conn:     PooledConnection<ConnectionManager<SqliteConnection>>,
+    conn:     Object<Manager<SqliteConnection>>,
     /// The user that is doing everything in this connection.
     user:     &'a User,
     /// Remembers the type of content chosen for this connection.
@@ -348,7 +350,7 @@ impl<C> SQLiteConnection<'_, C> {
         }
     }
 }
-impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnection<'_, C> {
+impl<C: Send + Sync + DeserializeOwned + Serialize + 'static> DatabaseConnection for SQLiteConnection<'_, C> {
     type Content = C;
     type Error = ConnectionError;
 
@@ -361,46 +363,51 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
             let span = span!(Level::INFO, "SQLiteConnection::add_version", policy = metadata.name,);
 
             debug!("Starting transaction...");
-            tokio::task::block_in_place(move || {
-                self.conn.exclusive_transaction(|conn| -> Result<u64, Self::Error> {
-                    // Trick the compiler into moving the span too
-                    let _span = span;
+            let user_id = self.user.id.clone();
+            let path = self.path.to_owned();
+            self.conn
+                .interact(move |conn| {
+                    conn.exclusive_transaction(|conn| -> Result<u64, Self::Error> {
+                        // Trick the compiler into moving the span too
+                        let _span = span;
 
-                    debug!("Retrieving latest policy version...");
-                    let latest: i64 = policies::select(policies, crate::schema::policies::dsl::version)
-                        .order_by(crate::schema::policies::dsl::created_at.desc())
-                        .limit(1)
-                        .load(conn)
-                        .map_err(|err| ConnectionError::GetLatestVersion { path: self.path.into(), err })?
-                        .pop()
-                        .unwrap_or(0);
+                        debug!("Retrieving latest policy version...");
+                        let latest: i64 = policies::select(policies, crate::schema::policies::dsl::version)
+                            .order_by(crate::schema::policies::dsl::created_at.desc())
+                            .limit(1)
+                            .load(conn)
+                            .map_err(|err| ConnectionError::GetLatestVersion { path: path.clone(), err })?
+                            .pop()
+                            .unwrap_or(0);
 
-                    // up to next version
-                    let next_version: i64 = latest + 1;
+                        // up to next version
+                        let next_version: i64 = latest + 1;
 
-                    // Construct the policy itself
-                    debug!("Adding new policy {next_version}...");
-                    let content = match serde_json::to_string(&content) {
-                        Ok(content) => content,
-                        Err(err) => return Err(ConnectionError::ContentSerialize { name: metadata.name, err }),
-                    };
-                    let model = SqlitePolicy {
-                        name: metadata.name,
-                        description: metadata.description,
-                        language: metadata.language,
-                        version: next_version,
-                        creator: self.user.id.clone(),
-                        created_at: Utc::now().naive_utc(),
-                        content,
-                    };
+                        // Construct the policy itself
+                        debug!("Adding new policy {next_version}...");
+                        let content = match serde_json::to_string(&content) {
+                            Ok(content) => content,
+                            Err(err) => return Err(ConnectionError::ContentSerialize { name: metadata.name, err }),
+                        };
+                        let model = SqlitePolicy {
+                            name: metadata.name,
+                            description: metadata.description,
+                            language: metadata.language,
+                            version: next_version,
+                            creator: user_id,
+                            created_at: Utc::now().naive_utc(),
+                            content,
+                        };
 
-                    // Submit it
-                    match diesel::insert_into(policies).values(&model).execute(conn) {
-                        Ok(_) => Ok(next_version as u64),
-                        Err(err) => Err(ConnectionError::AddVersion { path: self.path.into(), err }),
-                    }
+                        // Submit it
+                        match diesel::insert_into(policies).values(&model).execute(conn) {
+                            Ok(_) => Ok(next_version as u64),
+                            Err(err) => Err(ConnectionError::AddVersion { path, err }),
+                        }
+                    })
                 })
-            })
+                .await
+                .expect("database transaction should not panic")
         }
     }
 
@@ -411,29 +418,34 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
             let span = span!(Level::INFO, "SQLiteConnection::activate", version = version);
 
             debug!("Starting transaction...");
-            tokio::task::block_in_place(move || {
-                self.conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
-                    // Trick the compiler into moving the span too
-                    let _span = span;
+            let path = self.path.to_owned();
+            let user_id = self.user.id.clone();
+            self.conn
+                .interact(move |conn| {
+                    conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
+                        // Trick the compiler into moving the span too
+                        let _span = span;
 
-                    // Get the information about what to activate
-                    let av = Self::_get_active_version(self.path, conn)?;
+                        // Get the information about what to activate
+                        let av = Self::_get_active_version(&path, conn)?;
 
-                    // They may already be the same, ez
-                    if av.is_some_and(|v| v == version) {
-                        info!("Activated already-active version {version}");
-                        return Ok(());
-                    }
+                        // They may already be the same, ez
+                        if av.is_some_and(|v| v == version) {
+                            info!("Activated already-active version {version}");
+                            return Ok(());
+                        }
 
-                    // Otherwise, build the model and submit it
-                    debug!("Activating policy {version}...");
-                    let model = SqliteActiveVersion::new(version as i64, self.user.id.clone());
-                    if let Err(err) = diesel::insert_into(active_version).values(&model).execute(conn) {
-                        return Err(ConnectionError::SetActive { path: self.path.into(), version, err });
-                    }
-                    Ok(())
+                        // Otherwise, build the model and submit it
+                        debug!("Activating policy {version}...");
+                        let model = SqliteActiveVersion::new(version as i64, user_id.clone());
+                        if let Err(err) = diesel::insert_into(active_version).values(&model).execute(conn) {
+                            return Err(ConnectionError::SetActive { path: path.clone(), version, err });
+                        }
+                        Ok(())
+                    })
                 })
-            })
+                .await
+                .expect("database transaction should not panic")
         }
     }
 
@@ -444,29 +456,34 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
             let _span = span!(Level::INFO, "SQLiteConnection::deactivate");
 
             debug!("Starting transaction...");
-            tokio::task::block_in_place(move || {
-                self.conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
-                    // Get the current active version, if any
-                    let av = match Self::_get_active_version(self.path, conn)? {
-                        Some(av) => av,
-                        None => {
-                            info!("Deactivated a policy whilst none were active");
-                            return Ok(());
-                        },
-                    };
+            let path = self.path.to_owned();
+            let user_id = self.user.id.clone();
+            self.conn
+                .interact(move |conn| {
+                    conn.exclusive_transaction(|conn| -> Result<(), Self::Error> {
+                        // Get the current active version, if any
+                        let av = match Self::_get_active_version(&path, conn)? {
+                            Some(av) => av,
+                            None => {
+                                info!("Deactivated a policy whilst none were active");
+                                return Ok(());
+                            },
+                        };
 
-                    // If we found one, then update it
-                    debug!("Deactivating active policy {av}...");
-                    if let Err(err) = diesel::update(active_version)
-                        .filter(version.eq(av as i64))
-                        .set((deactivated_on.eq(Utc::now().naive_local()), deactivated_by.eq(&self.user.id)))
-                        .execute(conn)
-                    {
-                        return Err(ConnectionError::DeactivateVersion { path: self.path.into(), version: av, err });
-                    }
-                    Ok(())
+                        // If we found one, then update it
+                        debug!("Deactivating active policy {av}...");
+                        if let Err(err) = diesel::update(active_version)
+                            .filter(version.eq(av as i64))
+                            .set((deactivated_on.eq(Utc::now().naive_local()), deactivated_by.eq(&user_id)))
+                            .execute(conn)
+                        {
+                            return Err(ConnectionError::DeactivateVersion { path: path.clone(), version: av, err });
+                        }
+                        Ok(())
+                    })
                 })
-            })
+                .await
+                .expect("database transaction should not panic")
         }
     }
 
@@ -478,25 +495,31 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
         async move {
             let _span = span!(Level::INFO, "SQLiteConnection::get_versions");
 
-            debug!("Retrieving all policy versions...");
-            match policy::policies
-                .order_by(crate::schema::policies::dsl::created_at.desc())
-                .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
-                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut self.conn)
-            {
-                Ok(r) => Ok(r
-                    .into_iter()
-                    .map(|(description, name, language, version, creator, created_at)| {
-                        (version as u64, Metadata {
-                            attached: AttachedMetadata { name, description, language },
-                            version:  version as u64,
-                            creator:  User { id: creator, name: "John Smith".into() },
-                            created:  created_at.and_utc(),
-                        })
-                    })
-                    .collect()),
-                Err(err) => Err(ConnectionError::GetVersions { path: self.path.into(), err }),
-            }
+            let path = self.path.to_owned();
+            self.conn
+                .interact(move |conn| {
+                    debug!("Retrieving all policy versions...");
+                    match policy::policies
+                        .order_by(crate::schema::policies::dsl::created_at.desc())
+                        .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
+                        .load::<(String, String, String, i64, String, NaiveDateTime)>(conn)
+                    {
+                        Ok(r) => Ok(r
+                            .into_iter()
+                            .map(|(description, name, language, version, creator, created_at)| {
+                                (version as u64, Metadata {
+                                    attached: AttachedMetadata { name, description, language },
+                                    version:  version as u64,
+                                    creator:  User { id: creator, name: "John Smith".into() },
+                                    created:  created_at.and_utc(),
+                                })
+                            })
+                            .collect()),
+                        Err(err) => Err(ConnectionError::GetVersions { path, err }),
+                    }
+                })
+                .await
+                .expect("database transaction should not panic")
         }
     }
 
@@ -505,7 +528,8 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
             let _span = span!(Level::INFO, "SQLiteConnection::get_active");
 
             // Do a call to get the active, if any
-            tokio::task::block_in_place(move || Self::_get_active_version(self.path, &mut self.conn))
+            let path = self.path.to_owned();
+            self.conn.interact(move |conn| Self::_get_active_version(&path, conn)).await.expect("database transaction should not panic")
         }
     }
 
@@ -517,24 +541,30 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
 
             // Do a call to get the active, if any
             debug!("Fetching active version...");
-            match active_version
-                .limit(1)
-                .order_by(crate::schema::active_version::dsl::activated_on.desc())
-                .select(SqliteActiveVersion::as_select())
-                .load(&mut self.conn)
-            {
-                Ok(mut r) => match r.pop() {
-                    Some(av) => {
-                        if av.deactivated_on.is_some() {
-                            Ok(None)
-                        } else {
-                            Ok(Some(User { id: av.activated_by, name: "John Smith".into() }))
-                        }
-                    },
-                    None => Ok(None),
-                },
-                Err(err) => Err(ConnectionError::GetActiveVersion { path: self.path.into(), err }),
-            }
+            let path = self.path.to_owned();
+            self.conn
+                .interact(move |conn| {
+                    match active_version
+                        .limit(1)
+                        .order_by(crate::schema::active_version::dsl::activated_on.desc())
+                        .select(SqliteActiveVersion::as_select())
+                        .load(conn)
+                    {
+                        Ok(mut r) => match r.pop() {
+                            Some(av) => {
+                                if av.deactivated_on.is_some() {
+                                    Ok(None)
+                                } else {
+                                    Ok(Some(User { id: av.activated_by, name: "John Smith".into() }))
+                                }
+                            },
+                            None => Ok(None),
+                        },
+                        Err(err) => Err(ConnectionError::GetActiveVersion { path: path.clone(), err }),
+                    }
+                })
+                .await
+                .expect("database transaction should not panic")
         }
     }
 
@@ -545,33 +575,39 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
             let _span = span!(Level::INFO, "SQLiteConnection::get_version_metadata", version = version);
 
             debug!("Retrieving metadata for version {version}...");
-            match policy::policies
-                .limit(1)
-                .filter(crate::schema::policies::dsl::version.eq(version as i64))
-                .order_by(crate::schema::policies::dsl::created_at.desc())
-                .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
-                .load::<(String, String, String, i64, String, NaiveDateTime)>(&mut self.conn)
-            {
-                Ok(mut r) => {
-                    // Extract the version itself
-                    if r.is_empty() {
-                        return Ok(None);
-                    }
-                    let (description, name, language, version, creator, created_at) = r.remove(0);
+            let path = self.path.to_owned();
+            self.conn
+                .interact(move |conn| {
+                    match policy::policies
+                        .limit(1)
+                        .filter(crate::schema::policies::dsl::version.eq(version as i64))
+                        .order_by(crate::schema::policies::dsl::created_at.desc())
+                        .select((policy::description, policy::name, policy::language, policy::version, policy::creator, policy::created_at))
+                        .load::<(String, String, String, i64, String, NaiveDateTime)>(conn)
+                    {
+                        Ok(mut r) => {
+                            // Extract the version itself
+                            if r.is_empty() {
+                                return Ok(None);
+                            }
+                            let (description, name, language, version, creator, created_at) = r.remove(0);
 
-                    // Done, return the thing
-                    Ok(Some(Metadata {
-                        attached: AttachedMetadata { name, description, language },
-                        created:  created_at.and_utc(),
-                        creator:  User { id: creator, name: "John Smith".into() },
-                        version:  version as u64,
-                    }))
-                },
-                Err(err) => match err {
-                    diesel::result::Error::NotFound => Ok(None),
-                    err => Err(ConnectionError::GetVersion { path: self.path.into(), version, err }),
-                },
-            }
+                            // Done, return the thing
+                            Ok(Some(Metadata {
+                                attached: AttachedMetadata { name, description, language },
+                                created:  created_at.and_utc(),
+                                creator:  User { id: creator, name: "John Smith".into() },
+                                version:  version as u64,
+                            }))
+                        },
+                        Err(err) => match err {
+                            diesel::result::Error::NotFound => Ok(None),
+                            err => Err(ConnectionError::GetVersion { path: path.clone(), version, err }),
+                        },
+                    }
+                })
+                .await
+                .expect("database transaction should not panic")
         }
     }
 
@@ -581,34 +617,38 @@ impl<C: Send + DeserializeOwned + Serialize> DatabaseConnection for SQLiteConnec
         async move {
             let _span = span!(Level::INFO, "SQLiteConnection::get_version_content", version = version);
 
-            tokio::task::block_in_place(move || {
-                debug!("Retrieving content for version {version}...");
-                match policy::policies
-                    .limit(1)
-                    .filter(crate::schema::policies::dsl::version.eq(version as i64))
-                    .order_by(crate::schema::policies::dsl::created_at.desc())
-                    .select((policy::name, policy::content))
-                    .load::<(String, String)>(&mut self.conn)
-                {
-                    Ok(mut r) => {
-                        // Extract the version itself
-                        if r.is_empty() {
-                            return Ok(None);
-                        }
-                        let (name, content) = r.remove(0);
+            let path = self.path.to_owned();
+            self.conn
+                .interact(move |conn| {
+                    debug!("Retrieving content for version {version}...");
+                    match policy::policies
+                        .limit(1)
+                        .filter(crate::schema::policies::dsl::version.eq(version as i64))
+                        .order_by(crate::schema::policies::dsl::created_at.desc())
+                        .select((policy::name, policy::content))
+                        .load::<(String, String)>(conn)
+                    {
+                        Ok(mut r) => {
+                            // Extract the version itself
+                            if r.is_empty() {
+                                return Ok(None);
+                            }
+                            let (name, content) = r.remove(0);
 
-                        // Deserialize the content
-                        match serde_json::from_str(&content) {
-                            Ok(content) => Ok(Some(content)),
-                            Err(err) => Err(ConnectionError::ContentDeserialize { name, version, err }),
-                        }
-                    },
-                    Err(err) => match err {
-                        diesel::result::Error::NotFound => Ok(None),
-                        err => Err(ConnectionError::GetVersion { path: self.path.into(), version, err }),
-                    },
-                }
-            })
+                            // Deserialize the content
+                            match serde_json::from_str(&content) {
+                                Ok(content) => Ok(Some(content)),
+                                Err(err) => Err(ConnectionError::ContentDeserialize { name, version, err }),
+                            }
+                        },
+                        Err(err) => match err {
+                            diesel::result::Error::NotFound => Ok(None),
+                            err => Err(ConnectionError::GetVersion { path: path.clone(), version, err }),
+                        },
+                    }
+                })
+                .await
+                .expect("database transaction should not panic")
         }
     }
 }
