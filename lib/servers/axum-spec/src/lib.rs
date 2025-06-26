@@ -84,7 +84,7 @@ impl EndpointPath {
     /// - the number of arguments given does not match the number of arguments in the path.
     #[inline]
     #[track_caller]
-    pub fn instantiated_path<'a, S: AsRef<str>>(&self, args: impl IntoIterator<Item = &'a str>) -> Cow<'static, str> {
+    pub fn instantiated_path<'a>(&self, args: impl IntoIterator<Item = &'a str>) -> Cow<'static, str> {
         let mut args = args.into_iter();
         let mut replace_count: usize = 0;
         let path = self
