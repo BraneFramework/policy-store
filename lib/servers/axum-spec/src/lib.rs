@@ -18,8 +18,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 #[cfg(feature = "axum")]
 use std::convert::Infallible;
-use std::ffi::OsString;
-use std::path::PathBuf;
 
 #[cfg(feature = "axum")]
 use axum::handler::Handler;
@@ -28,6 +26,7 @@ use axum::routing::MethodRouter;
 #[cfg(feature = "axum")]
 use axum::routing::method_routing::{delete, get, post, put};
 use http::Method;
+use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
 use specifications::metadata::{AttachedMetadata, Metadata, User};
 
@@ -85,38 +84,29 @@ impl EndpointPath {
     /// - the number of arguments given does not match the number of arguments in the path.
     #[inline]
     #[track_caller]
-    pub fn instantiated_path<S: ToString>(&self, args: impl IntoIterator<Item = S>) -> Cow<'static, str> {
+    pub fn instantiated_path<'a, S: AsRef<str>>(&self, args: impl IntoIterator<Item = &'a str>) -> Cow<'static, str> {
         let mut args = args.into_iter();
-        if !self.path.contains("/:") {
-            // Ensure there aren't any arguments
-            if args.next().is_some() {
-                panic!("Arguments given for path {:?} which has no arguments", self.path);
-            }
-            return Cow::Borrowed(self.path);
-        }
-        let mut i: usize = 0;
-        let path: PathBuf = PathBuf::from(self.path)
-            .iter()
-            .map(|com| {
-                // SAFETY: It came from a string, so why wouldn't be UTF-8??? (famous last words)
-                let scom: &str = unsafe { com.to_str().unwrap_unchecked() };
-                if scom.starts_with(":") {
-                    let res = OsString::from(
-                        args.next().unwrap_or_else(|| panic!("Not enough arguments given for path {:?} (got {})", self.path, i)).to_string(),
-                    );
-                    i += 1;
+        let mut replace_count: usize = 0;
+        let path = self
+            .path
+            .split("/")
+            .map(|component| {
+                if component.starts_with("{") && component.ends_with("}") {
+                    let res = args.next().unwrap_or_else(|| panic!("Not enough arguments given for path {:?} (got {replace_count})", self.path));
+                    replace_count += 1;
                     res
                 } else {
-                    com.to_os_string()
+                    component
                 }
             })
-            .collect();
+            .join("/");
+
         // Assert none are left
         if args.next().is_some() {
             panic!("Too many arguments given for path {:?} which has no arguments", self.path);
         }
-        // SAFETY: It came from a string, and we only put strings in there, so why wouldn't be UTF-8??? (famous last words)
-        Cow::Owned(unsafe { path.into_os_string().into_string().unwrap_unchecked() })
+
+        if replace_count == 0 { Cow::Borrowed(self.path) } else { Cow::Owned(path) }
     }
 }
 
