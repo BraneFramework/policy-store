@@ -13,7 +13,7 @@ description = "Implements the `DatabaseConnector` for an SQLite backend."
 chrono = "0.4.30"
 diesel = { version = "2.2.3", features = ["chrono", "sqlite"] }
 diesel_migrations = "2.2.0"
-deadpool-diesel = { version = "0.6.1", features = ["sqlite" ] }
+deadpool-diesel = { version = "0.6.1", features = ["sqlite", "tracing"] }
 deadpool = "0.12.0"
 
 serde = "1.0.184"
