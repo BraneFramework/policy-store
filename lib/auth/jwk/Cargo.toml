@@ -16,6 +16,7 @@ jsonwebtoken = "9.0.0"
 serde_json = "1.0.29"
 thiserror = "2.0.0"
 tracing = "0.1.37"
+miette = "7.0.0"
 
 
 # Fixing transient minimal version issues

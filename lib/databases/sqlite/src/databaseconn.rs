@@ -54,7 +54,7 @@ pub enum DatabaseError {
     DatabaseDirCreate { path: PathBuf, source: std::io::Error },
     /// Failed to apply the migrations in a particular folder to a particular database.
     #[error("Failed to apply migrations to new database {:?}", path.display())]
-    MigrationsApply { path: PathBuf, source: Box<dyn 'static + std::error::Error> },
+    MigrationsApply { path: PathBuf, source: Box<dyn 'static + std::error::Error + Send + Sync> },
     /// Failed to find the migrations for a database in the given folder.
     #[error("Failed to find migrations in migrations folder {:?}", migrations_dir.display())]
     MigrationsFind { migrations_dir: PathBuf, source: diesel_migrations::MigrationError },

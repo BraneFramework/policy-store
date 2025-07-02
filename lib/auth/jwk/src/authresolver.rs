@@ -32,7 +32,7 @@ use crate::keyresolver::KeyResolver;
 /***** ERRORS *****/
 /// Lil' manual thing for making sure `Box<dyn HttpError>` can be [sourced](Error::source()).
 #[derive(Debug)]
-pub struct KeyResolveErrorWrapper(pub Box<dyn 'static + HttpError>);
+pub struct KeyResolveErrorWrapper(pub Box<dyn 'static + HttpError + Send + Sync>);
 impl Display for KeyResolveErrorWrapper {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult { self.0.fmt(f) }
@@ -53,7 +53,7 @@ impl HttpError for KeyResolveErrorWrapper {
 pub enum ServerError {
     /// The embedded [`KeyResolver`] failed to resolve a key due to some server-side error.
     #[error("Failed to resolve key")]
-    KeyResolve { source: Box<dyn 'static + Error> },
+    KeyResolve { source: Box<dyn 'static + Error + Send + Sync> },
 }
 // Allows key resolvers to use 'Infallible' as error type
 impl From<Infallible> for ServerError {
@@ -62,7 +62,7 @@ impl From<Infallible> for ServerError {
 }
 
 /// Represents client-side errors which the server can't fix.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, miette::Diagnostic)]
 pub enum ClientError {
     /// The given 'Authorization'-header did not contain valid UTF-8.
     #[error("Value of header {header:?} in request is non-UTF-8")]
@@ -169,8 +169,8 @@ impl<K> JwkResolver<K> {
 impl<K> AuthResolver for JwkResolver<K>
 where
     K: Sync + KeyResolver,
-    ClientError: From<K::ClientError>,
-    ServerError: From<K::ServerError>,
+    ClientError: From<K::ClientError> + Send + Sync,
+    ServerError: From<K::ServerError> + Send + Sync,
 {
     type Context = User;
     type ClientError = ClientError;
